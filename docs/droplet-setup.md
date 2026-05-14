@@ -145,4 +145,8 @@ COPYCLAW_WEBHOOK_SECRET=<long random string>
 
 ## Next
 
-Droplet is bootstrapped. Continue inside the droplet over SSH: install Node 22 + Claude Code, then run `claude` and have it drive the CopyClaw `/setup` flow (Docker, OneCLI, agent image build, service startup).
+Droplet is bootstrapped and reachable only via Cloudflare Tunnel SSH. Continue, in order, inside the droplet over `ssh copyclaw`:
+
+1. **`docs/github-ssh-setup.md`** — per-repo GitHub deploy keys with symmetric SSH config aliases (one block per repo under `~/.ssh/github/<reponame>/`).
+2. **`docs/prerequisites.md`** — install Claude Code, Node.js (via nvm), Docker Engine. Includes the non-root `docker` group step that `nanoclaw.sh` needs.
+3. **Clone CopyClaw** under `~/repositories/copyclaw` on the `deploy` branch, then run `bash nanoclaw.sh` to drive OneCLI install, agent image build, and the systemd user service.
