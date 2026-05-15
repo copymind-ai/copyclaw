@@ -6,7 +6,15 @@ import { getContainerImageBase, getDefaultContainerImage, getInstallSlug } from 
 import { isValidTimezone } from './timezone.js';
 
 // Read config values from .env (falls back to process.env).
-const envConfig = readEnvFile(['ASSISTANT_NAME', 'ASSISTANT_HAS_OWN_NUMBER', 'ONECLI_URL', 'ONECLI_API_KEY', 'TZ']);
+const envConfig = readEnvFile([
+  'ASSISTANT_NAME',
+  'ASSISTANT_HAS_OWN_NUMBER',
+  'ONECLI_URL',
+  'ONECLI_API_KEY',
+  'TZ',
+  'WAKE_WEBHOOK_SECRET',
+  'WAKE_RECEIVER_PORT',
+]);
 
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
 export const ASSISTANT_HAS_OWN_NUMBER =
@@ -38,6 +46,15 @@ export const ONECLI_API_KEY = process.env.ONECLI_API_KEY || envConfig.ONECLI_API
 export const MAX_MESSAGES_PER_PROMPT = Math.max(1, parseInt(process.env.MAX_MESSAGES_PER_PROMPT || '10', 10) || 10);
 export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min default — how long to keep container alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(1, parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5);
+
+// Wake-webhook receiver — external trigger that wakes a headless agent group
+// (e.g. bug-triage) via POST /wake/<agent_group_id> with X-Webhook-Secret.
+// Unset secret disables the receiver entirely.
+export const WAKE_WEBHOOK_SECRET = process.env.WAKE_WEBHOOK_SECRET || envConfig.WAKE_WEBHOOK_SECRET;
+export const WAKE_RECEIVER_PORT = parseInt(
+  process.env.WAKE_RECEIVER_PORT || envConfig.WAKE_RECEIVER_PORT || '5713',
+  10,
+);
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
