@@ -16,6 +16,7 @@ import { ensureContainerRuntimeRunning, cleanupOrphans } from './container-runti
 import { startActiveDeliveryPoll, startSweepDeliveryPoll, setDeliveryAdapter, stopDeliveryPolls } from './delivery.js';
 import { startHostSweep, stopHostSweep } from './host-sweep.js';
 import { routeInbound } from './router.js';
+import { startWakeReceiver, stopWakeReceiver } from './wake-receiver.js';
 import { log } from './log.js';
 
 // Response + shutdown registries live in response-registry.ts to break the
@@ -177,6 +178,9 @@ async function main(): Promise<void> {
   // 7. Start the `ncl` CLI socket server (data/ncl.sock).
   await startCliServer();
 
+  // 8. Start the wake-webhook receiver (only if WAKE_WEBHOOK_SECRET is set).
+  startWakeReceiver();
+
   log.info('NanoClaw running');
 }
 
@@ -193,6 +197,7 @@ async function shutdown(signal: string): Promise<void> {
   stopDeliveryPolls();
   stopHostSweep();
   await stopCliServer();
+  await stopWakeReceiver();
   try {
     await teardownChannelAdapters();
   } finally {
