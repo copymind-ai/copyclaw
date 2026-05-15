@@ -45,7 +45,7 @@ vi.mock('./config.js', async () => {
 // Imported after the mocks so they take effect.
 import { handleRequest } from './wake-receiver.js';
 
-const AGENT_GROUP_ID = 'ag-bug-triage-1';
+const AGENT_GROUP_ID = 'ag-issues-agent-1';
 
 function now() {
   return new Date().toISOString();
@@ -140,10 +140,7 @@ describe('wake-receiver handleRequest', () => {
 
   it('returns 401 when X-Webhook-Secret is missing', async () => {
     const r = makeRes();
-    await handleRequest(
-      makeReq({ method: 'POST', url: `/wake/${AGENT_GROUP_ID}`, body: '{"issue_id":"i1"}' }),
-      r.res,
-    );
+    await handleRequest(makeReq({ method: 'POST', url: `/wake/${AGENT_GROUP_ID}`, body: '{"issue_id":"i1"}' }), r.res);
     expect(r.statusCode()).toBe(401);
     expect(mockWakeContainer).not.toHaveBeenCalled();
   });
@@ -213,8 +210,8 @@ describe('wake-receiver handleRequest', () => {
   it('returns 202 on happy path, writes message, wakes container', async () => {
     createAgentGroup({
       id: AGENT_GROUP_ID,
-      name: 'Bug Triage',
-      folder: 'bug-triage',
+      name: 'Issues Agent',
+      folder: 'issues-agent',
       agent_provider: null,
       created_at: now(),
     });
@@ -242,9 +239,12 @@ describe('wake-receiver handleRequest', () => {
     const inPath = inboundDbPath(AGENT_GROUP_ID, sessionArg.id);
     expect(fs.existsSync(inPath)).toBe(true);
     const db = new Database(inPath);
-    const row = db
-      .prepare("SELECT id, kind, content, trigger FROM messages_in ORDER BY seq DESC LIMIT 1")
-      .get() as { id: string; kind: string; content: string; trigger: number };
+    const row = db.prepare('SELECT id, kind, content, trigger FROM messages_in ORDER BY seq DESC LIMIT 1').get() as {
+      id: string;
+      kind: string;
+      content: string;
+      trigger: number;
+    };
     db.close();
 
     expect(row.kind).toBe('system');
@@ -260,8 +260,8 @@ describe('wake-receiver handleRequest', () => {
   it('accepts null mention_id', async () => {
     createAgentGroup({
       id: AGENT_GROUP_ID,
-      name: 'Bug Triage',
-      folder: 'bug-triage',
+      name: 'Issues Agent',
+      folder: 'issues-agent',
       agent_provider: null,
       created_at: now(),
     });
@@ -280,9 +280,7 @@ describe('wake-receiver handleRequest', () => {
     expect(r.statusCode()).toBe(202);
     const sessionArg = mockWakeContainer.mock.calls[0][0] as Session;
     const db = new Database(inboundDbPath(AGENT_GROUP_ID, sessionArg.id));
-    const row = db
-      .prepare("SELECT content FROM messages_in ORDER BY seq DESC LIMIT 1")
-      .get() as { content: string };
+    const row = db.prepare('SELECT content FROM messages_in ORDER BY seq DESC LIMIT 1').get() as { content: string };
     db.close();
     expect(JSON.parse(row.content).mention_id).toBeNull();
   });
@@ -290,8 +288,8 @@ describe('wake-receiver handleRequest', () => {
   it('reuses the agent-shared session across multiple wake events', async () => {
     createAgentGroup({
       id: AGENT_GROUP_ID,
-      name: 'Bug Triage',
-      folder: 'bug-triage',
+      name: 'Issues Agent',
+      folder: 'issues-agent',
       agent_provider: null,
       created_at: now(),
     });
@@ -323,7 +321,7 @@ describe('wake-receiver handleRequest', () => {
 
     // Both messages landed in the same inbound.db
     const db = new Database(inboundDbPath(AGENT_GROUP_ID, s1.id));
-    const count = (db.prepare("SELECT COUNT(*) AS c FROM messages_in").get() as { c: number }).c;
+    const count = (db.prepare('SELECT COUNT(*) AS c FROM messages_in').get() as { c: number }).c;
     db.close();
     expect(count).toBe(2);
   });

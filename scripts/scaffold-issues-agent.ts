@@ -1,8 +1,8 @@
 /**
- * Scaffold the headless `bug-triage` agent group.
+ * Scaffold the headless `issues-agent` agent group.
  *
- * Used by Phase B.2.2: creates the agent_groups row + container_configs row
- * + groups/bug-triage/CLAUDE.local.md with a minimal acknowledgement-only
+ * Creates the agent_groups row + container_configs row +
+ * groups/issues-agent/CLAUDE.local.md with a minimal acknowledgement-only
  * procedure. No chat channel is wired — this group is triggered exclusively
  * by the wake-receiver (POST /wake/<agent_group_id>).
  *
@@ -12,7 +12,7 @@
  * env var. The wake-receiver looks the group up on every POST.
  *
  * Usage:
- *   pnpm exec tsx scripts/scaffold-bug-triage-group.ts
+ *   pnpm exec tsx scripts/scaffold-issues-agent.ts
  */
 import path from 'path';
 
@@ -23,14 +23,14 @@ import { runMigrations } from '../src/db/migrations/index.js';
 import { initGroupFilesystem } from '../src/group-init.js';
 import type { AgentGroup } from '../src/types.js';
 
-const FOLDER = 'bug-triage';
-const NAME = 'Bug Triage';
+const FOLDER = 'issues-agent';
+const NAME = 'Issues Agent';
 
-const CLAUDE_LOCAL = `# Bug Triage
+const CLAUDE_LOCAL = `# Issues Agent
 
-You are a bug-triage agent for the support-issue pipeline. You do **not** receive
-chat messages. You're woken by a wake event when a new support mention lands in
-copymind-app's DB.
+You handle support issues forwarded from Slack via copymind-app. You do **not**
+receive chat messages directly. You're woken by a wake event when a new
+support mention lands in copymind-app's DB.
 
 Your inbound message will be a \`system\` message whose \`content\` (JSON string)
 has shape: \`{"kind":"wake","issue_id":"<uuid>","mention_id":"<uuid|null>"}\`.
@@ -69,12 +69,12 @@ async function main(): Promise<void> {
     created = true;
   }
 
-  // Writes groups/bug-triage/CLAUDE.local.md (only on first init) and
+  // Writes groups/issues-agent/CLAUDE.local.md (only on first init) and
   // ensures the container_configs row exists with defaults.
   initGroupFilesystem(ag, { instructions: CLAUDE_LOCAL.trimEnd() });
 
   console.log('');
-  console.log(`Bug-triage group ${created ? 'created' : 'already exists'}.`);
+  console.log(`Issues-agent group ${created ? 'created' : 'already exists'}.`);
   console.log(`  id:     ${ag.id}`);
   console.log(`  folder: groups/${FOLDER}`);
   console.log('');

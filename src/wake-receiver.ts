@@ -3,7 +3,7 @@
  * agent group from outside the host.
  *
  * Used by copymind-app's CopyClawClient to fire a wake when a new
- * support_mention lands; the bug-triage agent picks it up and processes it.
+ * support_mention lands; the issues-agent picks it up and processes it.
  *
  * Route: POST /wake/<agent_group_id>
  *   - Header: X-Webhook-Secret (must match WAKE_WEBHOOK_SECRET)
