@@ -247,13 +247,16 @@ describe('wake-receiver handleRequest', () => {
     };
     db.close();
 
-    expect(row.kind).toBe('system');
+    expect(row.kind).toBe('webhook');
     expect(row.trigger).toBe(1);
     const parsed = JSON.parse(row.content);
     expect(parsed).toEqual({
-      kind: 'wake',
-      issue_id: 'issue-uuid',
-      mention_id: 'mention-uuid',
+      source: 'copymind-app',
+      event: 'support_mention',
+      payload: {
+        issue_id: 'issue-uuid',
+        mention_id: 'mention-uuid',
+      },
     });
   });
 
@@ -282,7 +285,7 @@ describe('wake-receiver handleRequest', () => {
     const db = new Database(inboundDbPath(AGENT_GROUP_ID, sessionArg.id));
     const row = db.prepare('SELECT content FROM messages_in ORDER BY seq DESC LIMIT 1').get() as { content: string };
     db.close();
-    expect(JSON.parse(row.content).mention_id).toBeNull();
+    expect(JSON.parse(row.content).payload.mention_id).toBeNull();
   });
 
   it('reuses the agent-shared session across multiple wake events', async () => {

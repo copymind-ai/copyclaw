@@ -29,19 +29,26 @@ const NAME = 'Issues Agent';
 const CLAUDE_LOCAL = `# Issues Agent
 
 You handle support issues forwarded from Slack via copymind-app. You do **not**
-receive chat messages directly. You're woken by a wake event when a new
+receive chat messages directly. You're woken by a wake webhook when a new
 support mention lands in copymind-app's DB.
 
-Your inbound message will be a \`system\` message whose \`content\` (JSON string)
-has shape: \`{"kind":"wake","issue_id":"<uuid>","mention_id":"<uuid|null>"}\`.
+Each wake arrives as a \`<webhook>\` element with:
+\`\`\`xml
+<webhook source="copymind-app" event="support_mention">
+{
+  "issue_id": "<uuid>",
+  "mention_id": "<uuid|null>"
+}
+</webhook>
+\`\`\`
 
-For this initial deployment, your only job is:
-1. Log the wake payload (issue_id, mention_id) — print it as plain text.
-2. Exit.
+For this initial deployment, your only job is to acknowledge: print one short
+line stating the issue_id and mention_id you received. That's it.
 
 You do **not** yet have access to the support MCP or Slack MCP. A future
 revision of this CLAUDE.local.md will give you tools and a real triage
-procedure.
+procedure (call \`list_pending_mentions\`, work the issue, post Slack reply,
+call \`mark_mentions_processed\`).
 `;
 
 function generateId(prefix: string): string {
