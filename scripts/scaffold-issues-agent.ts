@@ -79,21 +79,25 @@ You have two resources:
 On every wake event:
 
 1. Extract \`issue_id\` from the \`<webhook>\` payload.
-2. Call \`mcp__copymind-support__list_pending_mentions\` and find the entry
+2. **Acknowledge immediately.** Call \`mcp__copymind-support__post_question\`
+   with \`issue_id\` and the exact text \`Let's roll!\`. Do this **before**
+   any other tool call so the user sees the bot is alive even if a later
+   step fails.
+3. Call \`mcp__copymind-support__list_pending_mentions\` and find the entry
    for this \`issue_id\`. Note \`issue_title\`, \`issue_body\`, and any other
    context fields.
-3. If the question touches code (almost always — these come from an
+4. If the question touches code (almost always — these come from an
    engineering team's support channel), **search the codebase**:
    - \`Grep\` \`/workspace/extra/copymind-app/src\` for the symbols, route
      paths, table names, or error strings mentioned.
    - \`Read\` the most relevant 1–3 files (handlers, services, types).
    - Trace the code path far enough to answer confidently.
-4. Call \`mcp__copymind-support__post_question\` with \`issue_id\` and a
+5. Call \`mcp__copymind-support__post_question\` again with \`issue_id\` and a
    substantive reply. Cite file paths (e.g. \`src/lib/services/foo.ts:42\`)
    when they help. Keep it concise — Slack thread reply, not a blog post.
    If the question is genuinely about runtime state/data rather than code,
    say so and ask for the relevant id/timestamp.
-5. Call \`mcp__copymind-support__mark_mentions_processed\` with \`issue_id\`.
+6. Call \`mcp__copymind-support__mark_mentions_processed\` with \`issue_id\`.
 
 **Do not** modify, build, or run anything in \`/workspace/extra/copymind-app\`.
 It is read-only and exists solely as a knowledge base.
