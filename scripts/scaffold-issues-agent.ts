@@ -25,6 +25,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, GROUPS_DIR } from '../src/config.js';
+import type { AdditionalMountConfig } from '../src/container-config.js';
 import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.js';
 import { initDb } from '../src/db/connection.js';
 import {
@@ -58,32 +59,44 @@ Each wake arrives as:
 }
 </webhook>
 
-You have one MCP server: **copymind-support** (HTTP transport, authenticated by
-the OneCLI gateway). The tools you'll use here:
+You have two resources:
 
-- \`mcp__copymind-support__list_pending_mentions\` — your queue of unconsumed
-  mentions, grouped by issue. Call with \`{}\` to fetch everything.
-- \`mcp__copymind-support__post_question(issue_id, text)\` — posts a reply in
-  the issue's original Slack thread. Use this to confirm you saw the mention.
-- \`mcp__copymind-support__mark_mentions_processed(issue_id)\` — sweeps all
-  unconsumed mentions on this issue as \`consumed\`. Always call this last so
-  you don't see the same mention twice on a future wake.
+1. **\`copymind-support\` MCP server** (HTTP transport, authenticated by the
+   OneCLI gateway):
+   - \`mcp__copymind-support__list_pending_mentions\` — fetch your queue.
+   - \`mcp__copymind-support__post_question(issue_id, text)\` — reply in the
+     issue's Slack thread.
+   - \`mcp__copymind-support__mark_mentions_processed(issue_id)\` — ack the
+     work so you don't see the same mention twice.
 
-## Procedure (bidirectional smoke)
+2. **copymind-app source** at \`/workspace/extra/copymind-app\` (read-only,
+   pulled to remote HEAD on every wake). Use \`Grep\` and \`Read\` on this
+   path to investigate routes, services, schemas, and types whenever a
+   question touches the codebase.
+
+## Procedure
 
 On every wake event:
 
 1. Extract \`issue_id\` from the \`<webhook>\` payload.
-2. Call \`mcp__copymind-support__list_pending_mentions\` and locate the entry
-   for this \`issue_id\`. Note \`pending_count\`, \`latest_mention_user\`, and
-   \`issue_title\`.
-3. Call \`mcp__copymind-support__post_question\` with \`issue_id\` and a short
-   text like: *"Acknowledged. I see N pending mention(s); processing."*
-4. Call \`mcp__copymind-support__mark_mentions_processed\` with \`issue_id\`.
-5. Stop. (No real triage yet — that's the next deployment.)
+2. Call \`mcp__copymind-support__list_pending_mentions\` and find the entry
+   for this \`issue_id\`. Note \`issue_title\`, \`issue_body\`, and any other
+   context fields.
+3. If the question touches code (almost always — these come from an
+   engineering team's support channel), **search the codebase**:
+   - \`Grep\` \`/workspace/extra/copymind-app/src\` for the symbols, route
+     paths, table names, or error strings mentioned.
+   - \`Read\` the most relevant 1–3 files (handlers, services, types).
+   - Trace the code path far enough to answer confidently.
+4. Call \`mcp__copymind-support__post_question\` with \`issue_id\` and a
+   substantive reply. Cite file paths (e.g. \`src/lib/services/foo.ts:42\`)
+   when they help. Keep it concise — Slack thread reply, not a blog post.
+   If the question is genuinely about runtime state/data rather than code,
+   say so and ask for the relevant id/timestamp.
+5. Call \`mcp__copymind-support__mark_mentions_processed\` with \`issue_id\`.
 
-Real bug-triage logic (read the thread, decide between question/PR/status,
-post the right reply) lands in a future revision of this file.
+**Do not** modify, build, or run anything in \`/workspace/extra/copymind-app\`.
+It is read-only and exists solely as a knowledge base.
 `;
 
 function generateId(prefix: string): string {
@@ -137,12 +150,32 @@ async function main(): Promise<void> {
   const updatedMcpServers = { ...currentMcpServers, [MCP_SERVER_NAME]: supportMcp };
   updateContainerConfigJson(ag.id, 'mcp_servers', updatedMcpServers);
 
+  // Mount the copymind-app source at /workspace/extra/copymind-app (read-only).
+  // The wake-receiver pulls this to remote HEAD on every wake event so the
+  // agent always greps current code. Path on droplet must be allowlisted in
+  // ~/.config/nanoclaw/mount-allowlist.json or container spawn will fail.
+  const home = process.env.HOME || '';
+  const repoPath =
+    process.env.COPYMIND_APP_REPO_PATH || path.join(home, 'repositories', 'copymind-app');
+  const desiredMount: AdditionalMountConfig = {
+    hostPath: repoPath,
+    containerPath: 'copymind-app',
+    readonly: true,
+  };
+  const currentMounts: AdditionalMountConfig[] = existing?.additional_mounts
+    ? (JSON.parse(existing.additional_mounts) as AdditionalMountConfig[])
+    : [];
+  const filteredMounts = currentMounts.filter((m) => m.hostPath !== desiredMount.hostPath);
+  const updatedMounts = [...filteredMounts, desiredMount];
+  updateContainerConfigJson(ag.id, 'additional_mounts', updatedMounts);
+
   console.log('');
   console.log(`Issues-agent group ${created ? 'created' : 'already exists'}.`);
   console.log(`  id:     ${ag.id}`);
   console.log(`  folder: groups/${FOLDER}`);
   console.log(`  CLAUDE.local.md → rewritten (${CLAUDE_LOCAL.length} chars)`);
   console.log(`  mcp_servers.${MCP_SERVER_NAME} → ${mcpUrl}`);
+  console.log(`  additional_mounts.copymind-app → ${repoPath} (ro)`);
   console.log('');
   console.log('Set this on copymind-app:');
   console.log(`  COPYCLAW_AGENT_ID=${ag.id}`);

@@ -29,6 +29,7 @@ import { getAgentGroup } from './db/agent-groups.js';
 import { getSession } from './db/sessions.js';
 import { wakeContainer } from './container-runner.js';
 import { log } from './log.js';
+import { refreshRepoMounts } from './repo-refresh.js';
 import { resolveSession, writeSessionMessage } from './session-manager.js';
 
 let server: http.Server | null = null;
@@ -106,6 +107,9 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
     return;
   }
 
+  // Pull all git-backed additional_mounts to remote HEAD before the agent
+  // sees the new message — guarantees the agent always grep's fresh source.
+  await refreshRepoMounts(agentGroupId);
   await dispatchWake(agentGroupId, { issueId, mentionId });
 
   res.writeHead(202, { 'Content-Type': 'application/json' });
