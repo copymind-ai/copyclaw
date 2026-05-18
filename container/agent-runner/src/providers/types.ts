@@ -59,10 +59,35 @@ export interface QueryInput {
   };
 }
 
-export interface McpServerConfig {
+/**
+ * MCP server config. Discriminated by the optional `type` field — when absent
+ * (or `'stdio'`), we expect `command`/`args`/`env` and spawn a local process.
+ * `type: 'http'` and `type: 'sse'` point at a remote MCP server reachable
+ * over HTTPS. The Claude Agent SDK handles all three transports natively;
+ * we pass the config through unchanged.
+ */
+export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig | McpSseServerConfig;
+
+export interface McpStdioServerConfig {
+  type?: 'stdio';
   command: string;
-  args: string[];
-  env: Record<string, string>;
+  args?: string[];
+  env?: Record<string, string>;
+  instructions?: string;
+}
+
+export interface McpHttpServerConfig {
+  type: 'http';
+  url: string;
+  headers?: Record<string, string>;
+  instructions?: string;
+}
+
+export interface McpSseServerConfig {
+  type: 'sse';
+  url: string;
+  headers?: Record<string, string>;
+  instructions?: string;
 }
 
 export interface AgentQuery {

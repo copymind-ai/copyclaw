@@ -16,10 +16,34 @@ import { getContainerConfig } from './db/container-configs.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import type { AgentGroup, ContainerConfigRow } from './types.js';
 
-export interface McpServerConfig {
+/**
+ * MCP server config. Discriminated by the optional `type` field — when absent
+ * (or `'stdio'`), we expect `command`/`args`/`env` and spawn a local process.
+ * `type: 'http'` and `type: 'sse'` point at a remote MCP server reachable
+ * over HTTPS. The Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` 0.2.x)
+ * handles all three transports natively via its `McpServerConfig` union.
+ */
+export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig | McpSseServerConfig;
+
+export interface McpStdioServerConfig {
+  type?: 'stdio';
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  instructions?: string;
+}
+
+export interface McpHttpServerConfig {
+  type: 'http';
+  url: string;
+  headers?: Record<string, string>;
+  instructions?: string;
+}
+
+export interface McpSseServerConfig {
+  type: 'sse';
+  url: string;
+  headers?: Record<string, string>;
   instructions?: string;
 }
 
