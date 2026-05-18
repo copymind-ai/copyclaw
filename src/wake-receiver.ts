@@ -119,14 +119,20 @@ async function dispatchWake(
   const { session, created } = resolveSession(agentGroupId, null, null, 'agent-shared');
 
   const messageId = `wake-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Use kind:'webhook' (not 'system' — that's reserved for MCP tool responses
+  // and is filtered out by the agent-runner's poll loop). The formatter
+  // renders this as <webhook source="..." event="...">payload</webhook>.
   writeSessionMessage(agentGroupId, session.id, {
     id: messageId,
-    kind: 'system',
+    kind: 'webhook',
     timestamp: new Date().toISOString(),
     content: JSON.stringify({
-      kind: 'wake',
-      issue_id: payload.issueId,
-      mention_id: payload.mentionId,
+      source: 'copymind-app',
+      event: 'support_mention',
+      payload: {
+        issue_id: payload.issueId,
+        mention_id: payload.mentionId,
+      },
     }),
     trigger: 1,
   });
