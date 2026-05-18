@@ -7,10 +7,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initTestDb, closeDb, runMigrations, createAgentGroup } from './db/index.js';
-import {
-  createContainerConfig,
-  updateContainerConfigJson,
-} from './db/container-configs.js';
+import { createContainerConfig, updateContainerConfigJson } from './db/container-configs.js';
 import { configFromDb, materializeContainerJson } from './container-config.js';
 import { getContainerConfig } from './db/container-configs.js';
 import { getAgentGroup } from './db/agent-groups.js';

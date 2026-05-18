@@ -38,7 +38,10 @@ import type { AgentGroup } from '../src/types.js';
 const FOLDER = 'issues-agent';
 const NAME = 'Issues Agent';
 const MCP_SERVER_NAME = 'copymind-support';
-const DEFAULT_MCP_URL = 'https://app.copymind.com/api/support/streamable-http';
+// mcp-handler's streamable endpoint defaults to `<basePath>/mcp`. The
+// copymind-app route is configured with basePath="/api/support", so the
+// streamable transport lives at /api/support/mcp.
+const DEFAULT_MCP_URL = 'https://app.copymind.com/api/support/mcp';
 
 const CLAUDE_LOCAL = `# Issues Agent
 
@@ -122,12 +125,14 @@ async function main(): Promise<void> {
     ? (JSON.parse(existing.mcp_servers) as Record<string, unknown>)
     : {};
   const mcpUrl = process.env.COPYMIND_APP_MCP_URL || DEFAULT_MCP_URL;
+  // No `headers` field on purpose. OneCLI's gateway injects the Authorization
+  // header from the vault based on host-pattern match (app.copymind.com →
+  // Bearer <SUPPORT_AGENT_API_KEY>). If we set headers here, OneCLI treats
+  // them as already-present and refuses to override, so the literal
+  // placeholder gets sent and copymind-app responds 401.
   const supportMcp = {
     type: 'http' as const,
     url: mcpUrl,
-    // Placeholder header — the OneCLI gateway rewrites this from the vault
-    // based on host pattern. The literal value here is never sent to copymind-app.
-    headers: { Authorization: 'Bearer ${SUPPORT_AGENT_API_KEY}' },
   };
   const updatedMcpServers = { ...currentMcpServers, [MCP_SERVER_NAME]: supportMcp };
   updateContainerConfigJson(ag.id, 'mcp_servers', updatedMcpServers);
