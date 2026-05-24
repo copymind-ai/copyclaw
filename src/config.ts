@@ -14,7 +14,22 @@ const envConfig = readEnvFile([
   'TZ',
   'WAKE_WEBHOOK_SECRET',
   'WAKE_RECEIVER_PORT',
+  'SUPABASE_APP_PG_REF',
+  'SUPABASE_APP_PG_USR',
+  'SUPABASE_APP_PG_PWD',
 ]);
+
+// Assemble the read-only Supabase Postgres URL once at startup from the three
+// .env components, so the agent container only ever sees the final connection
+// string. Undefined when any component is missing — psql in the container
+// will then fail clearly if the agent tries to query.
+const _pgRef = envConfig.SUPABASE_APP_PG_REF;
+const _pgUsr = envConfig.SUPABASE_APP_PG_USR;
+const _pgPwd = envConfig.SUPABASE_APP_PG_PWD;
+export const SUPPORT_PG_URL: string | undefined =
+  _pgRef && _pgUsr && _pgPwd
+    ? `postgresql://${_pgUsr}:${encodeURIComponent(_pgPwd)}@db.${_pgRef}.supabase.co:5432/postgres?sslmode=require`
+    : undefined;
 
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
 export const ASSISTANT_HAS_OWN_NUMBER =

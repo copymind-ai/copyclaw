@@ -17,6 +17,7 @@ import {
   GROUPS_DIR,
   ONECLI_API_KEY,
   ONECLI_URL,
+  SUPPORT_PG_URL,
   TIMEZONE,
 } from './config.js';
 import { materializeContainerJson } from './container-config.js';
@@ -418,18 +419,11 @@ async function buildContainerArgs(
     }
   }
 
-  // Assemble the Supabase Postgres URL from host-side components and forward
-  // the result so the agent's psql calls connect as a limited-privilege role.
-  // The container only sees the final URL — never the raw password or the
-  // URL schema. Skip silently if any component is missing; psql in the
-  // container will fail clearly later if the URL isn't there.
-  const pgRef = process.env.SUPABASE_APP_PG_REF;
-  const pgUsr = process.env.SUPABASE_APP_PG_USR;
-  const pgPwd = process.env.SUPABASE_APP_PG_PWD;
-  if (pgRef && pgUsr && pgPwd) {
-    const pwdEnc = encodeURIComponent(pgPwd);
-    const supportPgUrl = `postgresql://${pgUsr}:${pwdEnc}@db.${pgRef}.supabase.co:5432/postgres?sslmode=require`;
-    args.push('-e', `SUPPORT_PG_URL=${supportPgUrl}`);
+  // Forward the assembled Supabase Postgres URL (built in config.ts from the
+  // three SUPABASE_APP_PG_* .env components) so the agent can query the prod
+  // DB as the read-only role. The container only sees the final URL.
+  if (SUPPORT_PG_URL) {
+    args.push('-e', `SUPPORT_PG_URL=${SUPPORT_PG_URL}`);
   }
 
   // OneCLI gateway — injects HTTPS_PROXY + certs so container API calls
