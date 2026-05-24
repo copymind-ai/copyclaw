@@ -80,7 +80,7 @@ Each wake arrives as:
 }
 </webhook>
 
-You have two resources:
+You have three resources:
 
 1. **\`copymind-support\` MCP server** (HTTP transport, authenticated by the
    OneCLI gateway):
@@ -95,6 +95,25 @@ You have two resources:
    path to investigate routes, services, schemas, and types whenever a
    question touches the codebase.
 
+3. **Read-only Postgres access** to the copymind-app production DB via your
+   Bash tool. The connection string lives in \`$SUPPORT_PG_URL\`:
+
+   \`\`\`bash
+   psql "$SUPPORT_PG_URL" -c "SELECT id, status FROM public.support_issues WHERE id = '...';"
+   psql "$SUPPORT_PG_URL" -c "\\d public.profile_info"   # introspect a table
+   \`\`\`
+
+   You're authenticated as \`support_agent_readonly\`, which has \`SELECT\` on
+   every \`public.*\` table (existing and future), \`default_transaction_read_only = on\`,
+   \`statement_timeout = '30s'\`, and \`BYPASSRLS\` so you can see any user's
+   rows without impersonation. Writes return an error — don't try them.
+
+   \`auth.*\` is **not accessible** (Supabase locks it down). Use public
+   tables instead: \`profile_info\`, \`user_full_billing_info\`,
+   \`user_therapy_sessions\`, \`user_activities\`, \`user_settings\`, etc.
+   When the question is about a specific user, session, or payment,
+   prefer the DB over guessing from the code.
+
 ## Procedure
 
 On every wake event:
@@ -105,12 +124,14 @@ On every wake event:
    for this \`issue_id\`. Note \`issue_title\`, \`issue_body\`, and any other
    context fields.
 
-3. If the question touches code (almost always — these come from an
-   engineering team's support channel), **search the codebase**:
-   - \`Grep\` \`/workspace/extra/copymind-app/src\` for the symbols, route
-     paths, table names, or error strings mentioned.
-   - \`Read\` the most relevant 1–3 files (handlers, services, types).
-   - Trace the code path far enough to answer confidently.
+3. Gather context. Pick the right resource(s):
+   - **Code questions** (how does X work, where does Y live) → \`Grep\` /
+     \`Read\` under \`/workspace/extra/copymind-app/src\`. Trace 1–3 files.
+   - **Runtime / user-data questions** (does this user have an active
+     subscription, when was their last session, what's their onboarding
+     state) → \`psql "$SUPPORT_PG_URL" -c "SELECT ..."\` against the public
+     schema. Use \`\\d <table>\` to introspect columns first if unsure.
+   - Often both: the code shows the contract, the DB shows the current row.
 
 4. **Mandatory.** Call \`mcp__copymind-support__post_question\` with the
    substantive reply. Cite file paths (e.g. \`src/lib/services/foo.ts:42\`)
@@ -197,6 +218,18 @@ async function main(): Promise<void> {
   const updatedMounts = [...filteredMounts, desiredMount];
   updateContainerConfigJson(ag.id, 'additional_mounts', updatedMounts);
 
+  // psql client for the read-only Postgres role. Installed at image build
+  // time via packages_apt; the URL is assembled host-side in container-runner
+  // and forwarded into the container as SUPPORT_PG_URL.
+  const currentApt: string[] = existing?.packages_apt
+    ? (JSON.parse(existing.packages_apt) as string[])
+    : [];
+  const desiredApt = 'postgresql-client';
+  const aptChanged = !currentApt.includes(desiredApt);
+  if (aptChanged) {
+    updateContainerConfigJson(ag.id, 'packages_apt', [...currentApt, desiredApt]);
+  }
+
   console.log('');
   console.log(`Issues-agent group ${created ? 'created' : 'already exists'}.`);
   console.log(`  id:     ${ag.id}`);
@@ -204,6 +237,9 @@ async function main(): Promise<void> {
   console.log(`  CLAUDE.local.md → rewritten (${CLAUDE_LOCAL.length} chars)`);
   console.log(`  mcp_servers.${MCP_SERVER_NAME} → ${mcpUrl}`);
   console.log(`  additional_mounts.copymind-app → ${repoPath} (ro)`);
+  console.log(
+    `  packages_apt.postgresql-client → ${aptChanged ? 'added (rebuild required)' : 'already present'}`,
+  );
   console.log('');
   console.log('Set this on copymind-app:');
   console.log(`  COPYCLAW_AGENT_ID=${ag.id}`);
