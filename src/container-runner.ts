@@ -418,6 +418,20 @@ async function buildContainerArgs(
     }
   }
 
+  // Assemble the Supabase Postgres URL from host-side components and forward
+  // the result so the agent's psql calls connect as a limited-privilege role.
+  // The container only sees the final URL — never the raw password or the
+  // URL schema. Skip silently if any component is missing; psql in the
+  // container will fail clearly later if the URL isn't there.
+  const pgRef = process.env.SUPABASE_APP_PG_REF;
+  const pgUsr = process.env.SUPABASE_APP_PG_USR;
+  const pgPwd = process.env.SUPABASE_APP_PG_PWD;
+  if (pgRef && pgUsr && pgPwd) {
+    const pwdEnc = encodeURIComponent(pgPwd);
+    const supportPgUrl = `postgresql://${pgUsr}:${pwdEnc}@db.${pgRef}.supabase.co:5432/postgres?sslmode=require`;
+    args.push('-e', `SUPPORT_PG_URL=${supportPgUrl}`);
+  }
+
   // OneCLI gateway — injects HTTPS_PROXY + certs so container API calls
   // are routed through the agent vault for credential injection. Treated as
   // a transient hard failure: if we can't wire the gateway, we don't spawn.
