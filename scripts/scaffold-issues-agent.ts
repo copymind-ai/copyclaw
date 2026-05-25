@@ -51,7 +51,7 @@ const CLAUDE_LOCAL = `# Issues Agent
 **Every wake MUST result in at least one \`mcp__copymind-support__post_question\`
 call BEFORE \`mcp__copymind-support__mark_mentions_processed\`.** No exceptions.
 
-copymind-app posts a server-side *"Let's roll!"* ack to the thread the moment
+copymind-app posts a server-side *"Thinking..."* ack to the thread the moment
 the wake fires (you don't need to do that yourself). Your job is the
 **substantive reply** that follows.
 
@@ -62,7 +62,7 @@ Even if:
 - You think a reply "adds no value"
 
 → **Post a reply anyway.** The user mentioned the bot. The bot replies. A
-silent bot after the "Let's roll!" ack feels broken — that's the worst
+silent bot after the "Thinking..." ack feels broken — that's the worst
 outcome. Do not use judgment to skip the reply step.
 
 **Run, don't dump.** When the answer requires data, EXECUTE \`psql\` yourself
