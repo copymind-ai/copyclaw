@@ -15,6 +15,8 @@ import {
   CONTAINER_INSTALL_LABEL,
   DATA_DIR,
   GROUPS_DIR,
+  LOCAL_DEV_APP_URL,
+  LOCAL_DEV_PG_URL,
   ONECLI_API_KEY,
   ONECLI_URL,
   SUPPORT_PG_URL,
@@ -424,6 +426,18 @@ async function buildContainerArgs(
   // DB as the read-only role. The container only sees the final URL.
   if (SUPPORT_PG_URL) {
     args.push('-e', `SUPPORT_PG_URL=${SUPPORT_PG_URL}`);
+  }
+
+  // Forward the long-lived local dev stack URLs so the agent can visit the
+  // dev app via agent-browser (LOCAL_DEV_APP_URL) and write to the local
+  // Supabase Postgres (LOCAL_DEV_PG_URL) for reproductions, without ever
+  // pointing at prod. Optional — undefined when the host hasn't provisioned
+  // the dev stack yet.
+  if (LOCAL_DEV_APP_URL) {
+    args.push('-e', `LOCAL_DEV_APP_URL=${LOCAL_DEV_APP_URL}`);
+  }
+  if (LOCAL_DEV_PG_URL) {
+    args.push('-e', `LOCAL_DEV_PG_URL=${LOCAL_DEV_PG_URL}`);
   }
 
   // OneCLI gateway — injects HTTPS_PROXY + certs so container API calls

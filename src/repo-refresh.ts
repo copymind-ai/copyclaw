@@ -47,7 +47,12 @@ function safePull(repoPath: string): Promise<void> {
 async function doPull(repoPath: string): Promise<void> {
   const start = Date.now();
   try {
-    await runGit(['-C', repoPath, 'fetch', '--quiet', 'origin']);
+    // For a bare-clone + worktree layout, `repoPath` is a worktree and its
+    // `origin/HEAD` is fetched into the *bare* clone shared by all worktrees.
+    // `rev-parse --git-common-dir` resolves to the bare clone for any worktree
+    // and to `.git` for a regular clone — works for both layouts.
+    const commonDir = (await runGit(['-C', repoPath, 'rev-parse', '--git-common-dir'])).trim();
+    await runGit(['-C', commonDir, 'fetch', '--quiet', 'origin']);
     await runGit(['-C', repoPath, 'reset', '--hard', '--quiet', 'origin/HEAD']);
     log.info('[repo-refresh] pulled', { repoPath, ms: Date.now() - start });
   } catch (err) {
@@ -58,11 +63,11 @@ async function doPull(repoPath: string): Promise<void> {
   }
 }
 
-function runGit(args: string[]): Promise<void> {
+function runGit(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { timeout: PULL_TIMEOUT_MS }, (err) => {
+    execFile('git', args, { timeout: PULL_TIMEOUT_MS }, (err, stdout) => {
       if (err) reject(err);
-      else resolve();
+      else resolve(stdout?.toString() ?? '');
     });
   });
 }

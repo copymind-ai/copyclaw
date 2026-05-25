@@ -17,6 +17,8 @@ const envConfig = readEnvFile([
   'SUPABASE_APP_PG_REF',
   'SUPABASE_APP_PG_USR',
   'SUPABASE_APP_PG_PWD',
+  'LOCAL_DEV_APP_URL',
+  'LOCAL_DEV_PG_URL',
 ]);
 
 // Assemble the read-only Supabase Postgres URL once at startup from the three
@@ -30,6 +32,15 @@ export const SUPPORT_PG_URL: string | undefined =
   _pgRef && _pgUsr && _pgPwd
     ? `postgresql://${_pgUsr}:${encodeURIComponent(_pgPwd)}@db.${_pgRef}.supabase.co:5432/postgres?sslmode=require`
     : undefined;
+
+// Long-lived local dev stack on the droplet host. The Next.js app runs as a
+// Docker compose service on a port allocated by `dev wt up main`; Postgres
+// is the local Supabase shipped with the `supabase` CLI worktree.
+// Both forwarded into the agent container as env vars so the agent can visit
+// the app (via agent-browser) and write to the local DB (via psql) without
+// touching prod.
+export const LOCAL_DEV_APP_URL: string | undefined = envConfig.LOCAL_DEV_APP_URL || undefined;
+export const LOCAL_DEV_PG_URL: string | undefined = envConfig.LOCAL_DEV_PG_URL || undefined;
 
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
 export const ASSISTANT_HAS_OWN_NUMBER =

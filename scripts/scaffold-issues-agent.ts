@@ -85,7 +85,7 @@ Each wake arrives as:
 }
 </webhook>
 
-You have three resources:
+You have four resources:
 
 1. **\`copymind-support\` MCP server** (HTTP transport, authenticated by the
    OneCLI gateway):
@@ -118,6 +118,18 @@ You have three resources:
    \`user_therapy_sessions\`, \`user_activities\`, \`user_settings\`, etc.
    When the question is about a specific user, session, or payment,
    prefer the DB over guessing from the code.
+
+4. **Local dev stack** on the droplet host. A long-lived copymind-app
+   instance runs against a local Supabase, isolated from prod:
+   - \`$LOCAL_DEV_APP_URL\` — the Next.js app. Visit it from your browser
+     tool (\`agent-browser\`) when a question is "what does the user
+     actually see" or you need a screenshot to support an answer.
+   - \`$LOCAL_DEV_PG_URL\` — the local Supabase Postgres (separate from
+     prod). Reserved for upcoming reproduction workflows.
+
+   **NEVER point the browser at the prod URL (\`app.copymind.com\`)** —
+   only the local dev URL. Use the local stack to verify behavior, not
+   prod.
 
 ## Procedure
 
