@@ -149,4 +149,4 @@ Droplet is bootstrapped and reachable only via Cloudflare Tunnel SSH. Continue, 
 
 1. **`docs/github-ssh-setup.md`** — per-repo GitHub deploy keys with symmetric SSH config aliases (one block per repo under `~/.ssh/github/<reponame>/`).
 2. **`docs/prerequisites.md`** — install Claude Code, Node.js (via nvm), Docker Engine. Includes the non-root `docker` group step that `nanoclaw.sh` needs.
-3. **Clone CopyClaw** under `~/repositories/copyclaw` on the `deploy` branch, then run `bash nanoclaw.sh` to drive OneCLI install, agent image build, and the systemd user service.
+3. **Clone CopyClaw** under `~/repositories/copyclaw` on the `agents/fixer` branch, then run `bash nanoclaw.sh` to drive OneCLI install, agent image build, and the systemd user service.
