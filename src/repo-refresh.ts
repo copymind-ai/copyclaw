@@ -2,7 +2,7 @@
  * Pre-wake repo refresh.
  *
  * Pulls every `additional_mounts` entry that looks like a git repo to remote
- * HEAD before the issues-agent container is woken, so the agent always reads
+ * HEAD before the fixer agent's container is woken, so the agent always reads
  * fresh source when investigating a Slack support issue.
  *
  * Per-repo in-process mutex coalesces concurrent wakes targeting the same

@@ -45,7 +45,7 @@ vi.mock('./config.js', async () => {
 // Imported after the mocks so they take effect.
 import { handleRequest } from './wake-receiver.js';
 
-const AGENT_GROUP_ID = 'ag-issues-agent-1';
+const AGENT_GROUP_ID = 'ag-fixer-1';
 
 function now() {
   return new Date().toISOString();
@@ -210,8 +210,8 @@ describe('wake-receiver handleRequest', () => {
   it('returns 202 on happy path, writes message, wakes container', async () => {
     createAgentGroup({
       id: AGENT_GROUP_ID,
-      name: 'Issues Agent',
-      folder: 'issues-agent',
+      name: 'Fixer',
+      folder: 'fixer',
       agent_provider: null,
       created_at: now(),
     });
@@ -263,8 +263,8 @@ describe('wake-receiver handleRequest', () => {
   it('accepts null mention_id', async () => {
     createAgentGroup({
       id: AGENT_GROUP_ID,
-      name: 'Issues Agent',
-      folder: 'issues-agent',
+      name: 'Fixer',
+      folder: 'fixer',
       agent_provider: null,
       created_at: now(),
     });
@@ -291,8 +291,8 @@ describe('wake-receiver handleRequest', () => {
   it('reuses the agent-shared session across multiple wake events', async () => {
     createAgentGroup({
       id: AGENT_GROUP_ID,
-      name: 'Issues Agent',
-      folder: 'issues-agent',
+      name: 'Fixer',
+      folder: 'fixer',
       agent_provider: null,
       created_at: now(),
     });

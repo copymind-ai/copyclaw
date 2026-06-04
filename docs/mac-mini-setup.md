@@ -118,11 +118,13 @@ Wait until the dashboard shows the tunnel as **HEALTHY**.
 | Purpose | Subdomain | Domain | Type | URL |
 |---|---|---|---|---|
 | SSH | `ssh-copyclaw-mac` | `copymind.com` | `SSH` | `localhost:22` |
-| Wake webhook | `copyclaw` | `copymind.com` | `HTTP` | `localhost:5713` |
+| Wake webhook | `copyclaw-mac` | `copymind.com` | `HTTP` | `localhost:5713` |
 
-Both are first-level subdomains → covered by free Universal SSL. Wake-route's backend doesn't exist yet; the route returns 502 until Phase B builds the listener.
+Both are first-level subdomains → covered by free Universal SSL. Wake-route's backend doesn't exist yet; the route returns 502 until the host's wake-receiver is listening on `:5713`.
 
-(SSH subdomain is `ssh-copyclaw-mac` — different from the droplet's `ssh-copyclaw` — so the two machines can coexist on the same Cloudflare account.)
+Both subdomains are `*-copyclaw-mac` — distinct from the droplet's `ssh-copyclaw` / `copyclaw` — so the two machines run side-by-side on the same Cloudflare account, and you cut copymind-app over from the droplet to the mini by changing one env var (`COPYCLAW_URL`), not by touching DNS.
+
+> **530 gotcha.** If `curl -I https://copyclaw-mac.copymind.com/...` returns **530** (Cloudflare error 1033) even with the connector HEALTHY, the `copyclaw-mac` **DNS record points at the wrong tunnel** — typically a stale/dead tunnel from an earlier attempt. Cloudflare → **DNS → Records → `copyclaw-mac`** and confirm the CNAME target is `<this-tunnel-id>.cfargotunnel.com` (same target as the working `ssh-copyclaw-mac` record). A 530 means the edge has no connector for that hostname's tunnel; a 502 means it reached the mini but nothing is on `:5713` yet.
 
 ### 4.3 Cloudflare Access (gate the SSH hostname)
 
@@ -148,7 +150,7 @@ Policies step → if you already have a `copymind-admins` (or equivalent) reusab
 | Action | Allow |
 | Include | Selector: **Emails**, Value: your email |
 
-**Do not** create an Access app for `copyclaw.copymind.com` — that hostname is gated by the `X-Webhook-Secret` header from copymind-app.
+**Do not** create an Access app for `copyclaw-mac.copymind.com` — that hostname is gated by the `X-Webhook-Secret` header from copymind-app, not by Access.
 
 ### 4.4 Laptop SSH config (tunnel)
 
@@ -188,14 +190,16 @@ You now have two ways to reach the mini: `ssh -i ~/.ssh/mac-mini/copymind <user>
 Only relevant if you set up the tunnel above and want copymind-app to fire the wake webhook:
 
 ```
-COPYCLAW_URL=https://copyclaw.copymind.com
-COPYCLAW_AGENT_ID=<bug-triage agent group id>
-COPYCLAW_WEBHOOK_SECRET=<long random string>
+COPYCLAW_URL=https://copyclaw-mac.copymind.com
+COPYCLAW_AGENT_ID=<fixer group id printed by scripts/scaffold-fixer.ts>
+COPYCLAW_WEBHOOK_SECRET=<must equal the mini's WAKE_WEBHOOK_SECRET in .env>
 ```
 
 `CopyClawClient.fireWakeWebhook` POSTs to `${COPYCLAW_URL}/wake/${COPYCLAW_AGENT_ID}` with `X-Webhook-Secret`.
 
 For pure-LAN use, point `COPYCLAW_URL` at `http://copyclaw-mac.local:5713` instead.
+
+> **Cutover from the droplet.** Flipping these three values on copymind-app's Vercel **production** env (and redeploying) is the entire cutover — the droplet keeps running untouched as an instant rollback (revert the three values). `COPYCLAW_AGENT_ID` is mini-specific: the mini's central DB is fresh, so `scaffold-fixer.ts` mints a **new** `ag-*` id distinct from the droplet's.
 
 ## Next
 
@@ -203,4 +207,7 @@ Mac mini is bootstrapped. Continue, in order, inside the mini:
 
 1. **`docs/github-ssh-setup.md`** — per-repo GitHub deploy keys with symmetric SSH config aliases (one block per repo under `~/.ssh/github/<reponame>/`).
 2. **`docs/prerequisites.md`** — install Claude Code, Node.js (via nvm), Docker. On macOS the Docker step is **Docker Desktop** (`brew install --cask docker`) or **Colima** (`brew install colima docker`); the apt instructions in that doc are Ubuntu-only.
-3. **Clone CopyClaw** under `~/repositories/copyclaw` on the `agents/fixer` branch, then run `bash nanoclaw.sh` to drive OneCLI install, agent image build, and the launchd user agent (macOS analog of the systemd user service).
+   > **Node version is load-bearing.** Install the version in CopyClaw's `.nvmrc` (currently **22**) and `nvm alias default 22`. Do **not** use Node 26 — `better-sqlite3@11.x` fails to compile against its V8 headers (`gyp ERR! build error`), which silently breaks `pnpm install`.
+3. **Clone CopyClaw** and run it on the **`agents/fixer`** branch (`deploy` is deprecated and will be deleted post-release; `agents/*` is the per-agent branch convention). Then `bash nanoclaw.sh` (or `dev nanoclaw up`) drives OneCLI install, agent image build, and the launchd user agent (macOS analog of the systemd user service).
+   > **Worktree trap.** If you use the bare-clone + worktree layout (`copyclaw.git/agents/fixer`), make sure the worktree actually tracks `origin/agents/fixer` — `git -C <worktree> rev-parse --abbrev-ref HEAD` and `git log -1` should show the support-agent commits (e.g. `src/wake-receiver.ts` exists). A worktree left on a stale local branch cut from upstream `main` looks fine but is missing every customization, so `:5713` never binds. Fix: `git fetch origin && git reset --hard origin/agents/fixer`, then reinstall + rebuild.
+4. **Scaffold + secret** — run `scripts/scaffold-fixer.ts` (creates the fixer group, prints the `COPYCLAW_AGENT_ID`, sets `additional_mounts`/`packages_apt`). Add `SUPPORT_AGENT_API_KEY` to the OneCLI vault (host pattern `app.copymind.com`, `Authorization: Bearer {value}`) and **explicitly assign it** to the agent (`onecli agents set-secrets --id <onecli-agent-id> --secret-ids <anthropic>,<support>`). `--mode all` alone did **not** inject reliably; explicit `set-secrets` is what works. Verify with a local wake: `list_pending_mentions` returns 200, not `credential_not_found`.

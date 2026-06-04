@@ -1,9 +1,9 @@
 /**
- * Scaffold the headless `issues-agent` agent group.
+ * Scaffold the headless `fixer` agent group.
  *
  * Creates the agent_groups row, ensures container_configs has the
  * copymind-app support MCP wired in, and (re)writes
- * groups/issues-agent/CLAUDE.local.md with the bidirectional-smoke procedure.
+ * groups/fixer/CLAUDE.local.md with the bidirectional-smoke procedure.
  * No chat channel is wired — this group is triggered exclusively by the
  * wake-receiver (POST /wake/<agent_group_id>).
  *
@@ -15,7 +15,7 @@
  * env var. The wake-receiver looks the group up on every POST.
  *
  * Usage:
- *   pnpm exec tsx scripts/scaffold-issues-agent.ts
+ *   pnpm exec tsx scripts/scaffold-fixer.ts
  *
  * Optional env:
  *   COPYMIND_APP_MCP_URL  — override the support MCP URL (defaults to
@@ -36,15 +36,15 @@ import { runMigrations } from '../src/db/migrations/index.js';
 import { initGroupFilesystem } from '../src/group-init.js';
 import type { AgentGroup } from '../src/types.js';
 
-const FOLDER = 'issues-agent';
-const NAME = 'Issues Agent';
+const FOLDER = 'fixer';
+const NAME = 'Fixer';
 const MCP_SERVER_NAME = 'copymind-support';
 // mcp-handler's streamable endpoint defaults to `<basePath>/mcp`. The
 // copymind-app route is configured with basePath="/api/support", so the
 // streamable transport lives at /api/support/mcp.
 const DEFAULT_MCP_URL = 'https://app.copymind.com/api/support/mcp';
 
-const CLAUDE_LOCAL = `# Issues Agent
+const CLAUDE_LOCAL = `# Fixer
 
 ## Hard rule (read this first — it overrides your judgment)
 
@@ -270,7 +270,7 @@ async function main(): Promise<void> {
   }
 
   console.log('');
-  console.log(`Issues-agent group ${created ? 'created' : 'already exists'}.`);
+  console.log(`Fixer group ${created ? 'created' : 'already exists'}.`);
   console.log(`  id:     ${ag.id}`);
   console.log(`  folder: groups/${FOLDER}`);
   console.log(`  CLAUDE.local.md → rewritten (${CLAUDE_LOCAL.length} chars)`);
