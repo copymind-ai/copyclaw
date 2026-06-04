@@ -19,6 +19,7 @@ const envConfig = readEnvFile([
   'SUPABASE_APP_PG_PWD',
   'LOCAL_DEV_APP_URL',
   'LOCAL_DEV_PG_URL',
+  'GH_TOKEN',
 ]);
 
 // Assemble the read-only Supabase Postgres URL once at startup from the three
@@ -41,6 +42,12 @@ export const SUPPORT_PG_URL: string | undefined =
 // touching prod.
 export const LOCAL_DEV_APP_URL: string | undefined = envConfig.LOCAL_DEV_APP_URL || undefined;
 export const LOCAL_DEV_PG_URL: string | undefined = envConfig.LOCAL_DEV_PG_URL || undefined;
+
+// Fine-grained GitHub PAT (contents:write + pull_requests:write on the target
+// repos). Forwarded into the Fixer container so it can push fix branches over
+// HTTPS (https://x-access-token:$GH_TOKEN@github.com/...) and open PRs to main
+// via the GitHub API — no write SSH deploy key needed.
+export const GH_TOKEN: string | undefined = envConfig.GH_TOKEN || undefined;
 
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
 export const ASSISTANT_HAS_OWN_NUMBER =

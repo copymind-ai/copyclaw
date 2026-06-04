@@ -14,6 +14,7 @@ import {
   CONTAINER_IMAGE_BASE,
   CONTAINER_INSTALL_LABEL,
   DATA_DIR,
+  GH_TOKEN,
   GROUPS_DIR,
   LOCAL_DEV_APP_URL,
   LOCAL_DEV_PG_URL,
@@ -438,6 +439,13 @@ async function buildContainerArgs(
   }
   if (LOCAL_DEV_PG_URL) {
     args.push('-e', `LOCAL_DEV_PG_URL=${LOCAL_DEV_PG_URL}`);
+  }
+
+  // Forward the GitHub PAT so the Fixer can push fix branches + open PRs.
+  // Only the Fixer needs it, but it's harmless for verify-only agents (they
+  // simply never use it). Optional — undefined until provisioned.
+  if (GH_TOKEN) {
+    args.push('-e', `GH_TOKEN=${GH_TOKEN}`);
   }
 
   // OneCLI gateway — injects HTTPS_PROXY + certs so container API calls
