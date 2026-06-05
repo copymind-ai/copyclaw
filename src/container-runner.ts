@@ -462,6 +462,16 @@ async function buildContainerArgs(
   }
   log.info('OneCLI gateway applied', { containerName });
 
+  // GitHub goes DIRECT, bypassing the OneCLI proxy. The proxy MITMs TLS and
+  // only cleanly forwards Authorization for hosts it has a vault secret for;
+  // github isn't one, so a proxied push/PR gets its auth header mangled
+  // (verified: 403 via proxy, 200 direct). The proxy's combined CA already
+  // validates github's real cert, so only the proxy bypass is needed. Set
+  // after applyContainerConfig so it isn't clobbered by OneCLI's proxy vars.
+  const NO_PROXY_GITHUB =
+    'github.com,api.github.com,codeload.github.com,uploads.github.com,objects.githubusercontent.com';
+  args.push('-e', `NO_PROXY=${NO_PROXY_GITHUB}`, '-e', `no_proxy=${NO_PROXY_GITHUB}`);
+
   // Host gateway
   args.push(...hostGatewayArgs());
 
