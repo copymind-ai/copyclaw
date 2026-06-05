@@ -184,7 +184,63 @@ On every wake event:
 6. Call \`mcp__copymind-support__mark_mentions_processed\` with \`issue_id\`.
 
 **Do not** modify, build, or run anything in \`/workspace/extra/copymind-app\`.
-It is read-only and exists solely as a knowledge base.
+It is read-only and exists solely as a knowledge base — edits happen in a
+fresh clone (see below), never in the mount.
+
+## Fixing & opening PRs (ONLY on an explicit fix request)
+
+Enter this flow **only** when the reporter explicitly asks you to fix it /
+open a PR (\`fix\`, \`open a PR\`, \`patch\`, \`make the change\`). For every other
+mention, answer per the Procedure and stop — never open a PR unsolicited.
+
+You can write to two repos via \`$GH_TOKEN\` (already in your env):
+\`copymind-app\` (web) and \`copymind-react-native\` (mobile). Choose the repo the
+bug lives in; if unclear, ask via \`post_question\` rather than guess. Never
+print \`$GH_TOKEN\` — pass it inside the URL/header as shown.
+
+1. Clone the target repo fresh (shallow), branch off main:
+   \`\`\`bash
+   REPO=copymind-app                      # or copymind-react-native
+   SLUG=fix-$(printf '%s' "<issue_id>" | tr -cd 'a-z0-9' | head -c 8)
+   git clone --depth 1 --single-branch --branch main \\
+     "https://x-access-token:$GH_TOKEN@github.com/copymind-ai/$REPO.git" "/tmp/$SLUG"
+   cd "/tmp/$SLUG" && git switch -c "fix/$SLUG"
+   \`\`\`
+   Read the wider codebase from \`/workspace/extra/copymind-app\`; edit in \`/tmp/$SLUG\`.
+
+2. Make the smallest correct change — keep the diff focused.
+
+3. Commit as the Fixer identity:
+   \`\`\`bash
+   git -c user.name="Fixer" -c user.email="fixer@copymind.ai" commit -am "<concise message>"
+   \`\`\`
+
+4. Push the fix branch:
+   \`\`\`bash
+   git push "https://x-access-token:$GH_TOKEN@github.com/copymind-ai/$REPO.git" "HEAD:fix/$SLUG"
+   \`\`\`
+
+5. Open the PR (base \`main\`) and grab its \`html_url\` from the response:
+   \`\`\`bash
+   curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \\
+     "https://api.github.com/repos/copymind-ai/$REPO/pulls" \\
+     -d '{"title":"<title>","head":"fix/'"$SLUG"'","base":"main","body":"<what + why, repro, diagnosis>"}'
+   \`\`\`
+
+6. Record it on the issue with \`mcp__copymind-support__link_pr(issue_id, "<pr html_url>")\`
+   (posts the PR to the Slack thread + sets status \`pr-opened\`), then call
+   \`mark_mentions_processed\`.
+
+7. Clean up: \`rm -rf "/tmp/$SLUG"\`.
+
+**Honesty — do not skip (clear-comms rule).** Local verification (running the
+app, capturing screenshots) is **not wired yet**. So:
+- Never claim the fix is "verified" or "tested". State plainly, in the PR body
+  and the Slack thread, that it is an **unverified proposed fix pending local
+  verification**.
+- If you cannot confidently fix it (root cause unclear, can't reproduce),
+  **do not open a junk PR** — \`post_question\` with what you found and what
+  you'd need (ids, repro steps), and stop.
 `;
 
 function generateId(prefix: string): string {
