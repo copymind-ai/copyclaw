@@ -14,6 +14,7 @@ const envConfig = readEnvFile([
   'TZ',
   'WAKE_WEBHOOK_SECRET',
   'WAKE_RECEIVER_PORT',
+  'WEBHOOK_PORT',
   'SUPABASE_APP_PG_REF',
   'SUPABASE_APP_PG_USR',
   'SUPABASE_APP_PG_PWD',
@@ -86,6 +87,14 @@ export const MAX_CONCURRENT_CONTAINERS = Math.max(1, parseInt(process.env.MAX_CO
 export const WAKE_WEBHOOK_SECRET = process.env.WAKE_WEBHOOK_SECRET || envConfig.WAKE_WEBHOOK_SECRET;
 export const WAKE_RECEIVER_PORT = parseInt(
   process.env.WAKE_RECEIVER_PORT || envConfig.WAKE_RECEIVER_PORT || '5713',
+  10,
+);
+
+// Channel-adapter webhook server port. Default 3000 collides with several
+// copymind-* dev apps (copymind-app=3000); the Mac sets WEBHOOK_PORT=3500 in
+// .env so copyclaw doesn't fight the apps for a port.
+export const WEBHOOK_PORT = parseInt(
+  process.env.WEBHOOK_PORT || envConfig.WEBHOOK_PORT || '3000',
   10,
 );
 
