@@ -107,13 +107,30 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
     return;
   }
 
-  // Pull all git-backed additional_mounts to remote HEAD before the agent
-  // sees the new message — guarantees the agent always grep's fresh source.
-  await refreshRepoMounts(agentGroupId);
-  await dispatchWake(agentGroupId, { issueId, mentionId });
-
+  // Respond immediately so the caller's wake ack isn't gated on repo-refresh
+  // latency. A large `git fetch` (e.g. after a multi-day commit backlog) can
+  // take several seconds and exceed the caller's webhook timeout, making a
+  // wake that actually succeeded look failed — which suppresses the caller's
+  // thread-side "Thinking..." ack. The refresh + dispatch run in the
+  // background; their order is preserved so the agent still reads fresh source
+  // (refresh completes before the container is woken).
   res.writeHead(202, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: true, queued: true }));
+
+  void (async () => {
+    try {
+      // Pull all git-backed additional_mounts to remote HEAD before the agent
+      // sees the new message — guarantees the agent always grep's fresh source.
+      await refreshRepoMounts(agentGroupId);
+      await dispatchWake(agentGroupId, { issueId, mentionId });
+    } catch (err) {
+      log.error('[wake-receiver] background wake processing failed', {
+        agentGroupId,
+        issueId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
 }
 
 async function dispatchWake(
