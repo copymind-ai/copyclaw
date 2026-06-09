@@ -18,6 +18,8 @@ import {
   GROUPS_DIR,
   LOCAL_DEV_APP_URL,
   LOCAL_DEV_PG_URL,
+  NANOCLAW_BUN_BIN,
+  NANOCLAW_CLAUDE_CODE_BIN,
   ONECLI_API_KEY,
   ONECLI_URL,
   SUPPORT_PG_URL,
@@ -568,7 +570,7 @@ async function buildContainerArgs(
 function resolveBunBin(): string {
   const home = process.env.HOME;
   const candidates = [
-    process.env.NANOCLAW_BUN_BIN,
+    NANOCLAW_BUN_BIN,
     home ? path.join(home, '.bun', 'bin', 'bun') : undefined,
     '/opt/homebrew/bin/bun',
     '/usr/local/bin/bun',
@@ -593,7 +595,7 @@ function resolveBunBin(): string {
 function resolveClaudeCodeBin(): string | undefined {
   const home = process.env.HOME;
   const candidates = [
-    process.env.NANOCLAW_CLAUDE_CODE_BIN,
+    NANOCLAW_CLAUDE_CODE_BIN,
     home ? path.join(home, '.bun', 'bin', 'claude') : undefined,
     '/opt/homebrew/bin/claude',
     '/usr/local/bin/claude',

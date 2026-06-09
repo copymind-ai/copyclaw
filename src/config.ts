@@ -21,6 +21,8 @@ const envConfig = readEnvFile([
   'LOCAL_DEV_APP_URL',
   'LOCAL_DEV_PG_URL',
   'GH_TOKEN',
+  'NANOCLAW_BUN_BIN',
+  'NANOCLAW_CLAUDE_CODE_BIN',
 ]);
 
 // Assemble the read-only Supabase Postgres URL once at startup from the three
@@ -49,6 +51,15 @@ export const LOCAL_DEV_PG_URL: string | undefined = envConfig.LOCAL_DEV_PG_URL |
 // HTTPS (https://x-access-token:$GH_TOKEN@github.com/...) and open PRs to main
 // via the GitHub API — no write SSH deploy key needed.
 export const GH_TOKEN: string | undefined = envConfig.GH_TOKEN || undefined;
+
+// Host-runtime bin locations. readEnvFile keeps .env out of process.env, so the
+// host-spawn resolvers can't read these via process.env — they come through
+// here. Absolute paths pin the bins the launchd PATH won't otherwise see
+// (nvm/bun live outside the launchd environment).
+export const NANOCLAW_BUN_BIN: string | undefined =
+  process.env.NANOCLAW_BUN_BIN || envConfig.NANOCLAW_BUN_BIN || undefined;
+export const NANOCLAW_CLAUDE_CODE_BIN: string | undefined =
+  process.env.NANOCLAW_CLAUDE_CODE_BIN || envConfig.NANOCLAW_CLAUDE_CODE_BIN || undefined;
 
 export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
 export const ASSISTANT_HAS_OWN_NUMBER =
@@ -93,10 +104,7 @@ export const WAKE_RECEIVER_PORT = parseInt(
 // Channel-adapter webhook server port. Default 3000 collides with several
 // copymind-* dev apps (copymind-app=3000); the Mac sets WEBHOOK_PORT=3500 in
 // .env so copyclaw doesn't fight the apps for a port.
-export const WEBHOOK_PORT = parseInt(
-  process.env.WEBHOOK_PORT || envConfig.WEBHOOK_PORT || '3000',
-  10,
-);
+export const WEBHOOK_PORT = parseInt(process.env.WEBHOOK_PORT || envConfig.WEBHOOK_PORT || '3000', 10);
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
