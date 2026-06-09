@@ -29,8 +29,11 @@ type ResponseFrame =
 // Paths
 // ---------------------------------------------------------------------------
 
-const INBOUND_DB = '/workspace/inbound.db';
-const OUTBOUND_DB = '/workspace/outbound.db';
+// Self-contained (no agent-runner imports); mirror paths.ts's env override
+// so the host runtime works here too. Defaults to the Docker layout.
+const WORKSPACE = process.env.NANOCLAW_WORKSPACE || '/workspace';
+const INBOUND_DB = `${WORKSPACE}/inbound.db`;
+const OUTBOUND_DB = `${WORKSPACE}/outbound.db`;
 
 // ---------------------------------------------------------------------------
 // DB transport
