@@ -67,6 +67,8 @@ export interface ContainerConfig {
   maxMessagesPerPrompt?: number;
   model?: string;
   effort?: string;
+  /** 'docker' (default) or 'host' — where the container runner launches the agent-runner. */
+  runtime?: string;
 }
 
 /** Build a `ContainerConfig` from a DB row + agent group identity. */
@@ -87,6 +89,7 @@ export function configFromDb(row: ContainerConfigRow, group: AgentGroup): Contai
     maxMessagesPerPrompt: row.max_messages_per_prompt ?? undefined,
     model: row.model ?? undefined,
     effort: row.effort ?? undefined,
+    runtime: row.runtime ?? 'docker',
   };
 }
 
