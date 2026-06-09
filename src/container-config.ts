@@ -75,6 +75,8 @@ export interface ContainerConfig {
   bashAllowedPatterns?: string[];
   /** Host-runtime working directory (absolute). Undefined → group dir. */
   hostCwd?: string;
+  /** Forward GH_TOKEN into this agent (Fixer only). Default false. */
+  forwardGhToken?: boolean;
 }
 
 /** Build a `ContainerConfig` from a DB row + agent group identity. */
@@ -99,6 +101,7 @@ export function configFromDb(row: ContainerConfigRow, group: AgentGroup): Contai
     bashGatingEnabled: row.bash_gating_enabled === 1,
     bashAllowedPatterns: JSON.parse(row.bash_allowed_patterns ?? '[]') as string[],
     hostCwd: row.host_cwd ?? undefined,
+    forwardGhToken: row.forward_gh_token === 1,
   };
 }
 

@@ -69,6 +69,7 @@ export function backfillContainerConfigs(): void {
       bash_gating_enabled: 0,
       bash_allowed_patterns: '[]',
       host_cwd: null,
+      forward_gh_token: 0,
       updated_at: new Date().toISOString(),
     };
 

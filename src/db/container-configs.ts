@@ -12,6 +12,7 @@ const SCALAR_COLUMNS = new Set([
   'runtime',
   'bash_gating_enabled',
   'host_cwd',
+  'forward_gh_token',
 ]);
 const JSON_COLUMNS = new Set([
   'skills',
@@ -75,6 +76,7 @@ export function updateContainerConfigScalars(
       | 'runtime'
       | 'bash_gating_enabled'
       | 'host_cwd'
+      | 'forward_gh_token'
     >
   >,
 ): void {

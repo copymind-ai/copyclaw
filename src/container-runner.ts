@@ -163,7 +163,8 @@ async function spawnContainer(session: Session): Promise<void> {
     const groupDir = path.resolve(GROUPS_DIR, agentGroup.folder);
     // host_cwd lets an agent run its tools from a fixed location (devops from a
     // repo worktree so `dev wt up` works without a cd). Falls back to groupDir.
-    const hostCwd = containerConfig.hostCwd && fs.existsSync(containerConfig.hostCwd) ? containerConfig.hostCwd : groupDir;
+    const hostCwd =
+      containerConfig.hostCwd && fs.existsSync(containerConfig.hostCwd) ? containerConfig.hostCwd : groupDir;
     const env = await buildHostEnv(
       sessDir,
       groupDir,
@@ -506,9 +507,9 @@ async function buildContainerArgs(
   }
 
   // Forward the GitHub PAT so the Fixer can push fix branches + open PRs.
-  // Only the Fixer needs it, but it's harmless for verify-only agents (they
-  // simply never use it). Optional — undefined until provisioned.
-  if (GH_TOKEN) {
+  // Opt-in per agent (forward_gh_token) — ONLY the Fixer should hold it; the
+  // verifier and any other agent must never be able to push git.
+  if (GH_TOKEN && containerConfig.forwardGhToken) {
     args.push('-e', `GH_TOKEN=${GH_TOKEN}`);
   }
 

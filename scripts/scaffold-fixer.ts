@@ -31,6 +31,7 @@ import { initDb } from '../src/db/connection.js';
 import {
   getContainerConfig,
   updateContainerConfigJson,
+  updateContainerConfigScalars,
 } from '../src/db/container-configs.js';
 import { runMigrations } from '../src/db/migrations/index.js';
 import { initGroupFilesystem } from '../src/group-init.js';
@@ -252,15 +253,51 @@ print \`$GH_TOKEN\` — pass it inside the URL/header as shown.
 
 8. Clean up: \`rm -rf "/tmp/$SLUG"\`.
 
+## Runtime verification via the mesh (devops + verifiers)
+
+CI green is **not** a verified fix. For UI/behavioral bugs, prove the fix in a
+running environment by orchestrating two other agents. You are the orchestrator
+and the **only** git writer; \`devops\` owns the environment, the verifiers drive
+it. You talk to them with \`send_message\` / \`send_file\`; they reply back to you.
+
+**This plays out across multiple wakes** — messaging is fire-and-forget, so you
+send, end your turn, and get re-woken when a reply arrives (it lands as
+\`<message from="devops">…</message>\`). You have no in-memory state between
+wakes: **anchor everything to the PR and the issue thread**. Before delegating,
+record where you are (e.g. post to the issue thread: "fix pushed, bringing up
+env for verification") so a future wake knows the state.
+
+Flow (only after the fix branch is pushed + PR opened + CI green):
+
+1. **Ask devops to bring up the branch env:**
+   \`send_message("devops", "env up branch=fix/<SLUG>")\`. End your turn.
+2. **On devops's reply:**
+   - \`ready branch=… url=<env_url>\` → go to step 3.
+   - \`failed …\` → relay the failure to the Slack thread, mark the PR
+     **proposed fix (CI-green), runtime verification blocked: <reason>**, stop.
+3. **Ask the right verifier to verify** (web bug → \`web-verifier\`; later
+   ios/android → those). Give it everything it needs:
+   \`send_message("web-verifier", "verify branch=fix/<SLUG> env=<env_url> repro=<exact steps> prod_user=<uuid|none> expected=<what the fix should change, before vs after>")\`.
+   End your turn.
+4. **On the verifier's reply + artifacts** (it uses \`send_file\` to send you
+   screenshots/logs — they arrive in your inbox):
+   - **Publish the artifacts** so the PR can link them. The repos are private,
+     so inline image embeds 404 — push the files to an orphan
+     \`agent-artifacts/<SLUG>\` branch and use **clickable blob links**
+     (\`https://github.com/copymind-ai/$REPO/blob/agent-artifacts/<SLUG>/<file>\`),
+     never \`raw.githubusercontent.com\` embeds.
+   - **Update the PR** with a \`## Verification\` section: the verdict, the repro,
+     and before/after blob links.
+   - **Post the verdict to the Slack thread** via \`post_question\`.
+
 **Honesty — do not skip (clear-comms rule).**
 - **CI:** never announce a PR as ready while its checks are red. If you can't get
   CI green, say so plainly in the Slack thread and name the failing check — don't
   imply it's mergeable.
-- **Runtime verification** (running the app, reproducing the bug, capturing
-  screenshots) is a separate, heavier step that is **not wired into this flow**.
-  Green CI is **not** the same as a verified fix — never claim the fix is
-  "verified" or "tested" on the strength of CI alone. Call it a **proposed fix
-  (CI-green) pending runtime verification**.
+- **Verified means verified.** Mark a fix "verified" **only** when a verifier
+  returns a \`verified\` verdict backed by artifacts. Relay \`not_verified\` /
+  \`not_reproduced\` verbatim — never upgrade them. Green CI alone is a **proposed
+  fix (CI-green) pending runtime verification**, never "verified".
 - If you cannot confidently fix it (root cause unclear, can't reproduce),
   **do not open a junk PR** — \`post_question\` with what you found and what
   you'd need (ids, repro steps), and stop.
@@ -316,6 +353,10 @@ async function main(): Promise<void> {
   };
   const updatedMcpServers = { ...currentMcpServers, [MCP_SERVER_NAME]: supportMcp };
   updateContainerConfigJson(ag.id, 'mcp_servers', updatedMcpServers);
+
+  // Fixer is the ONLY agent that may push git — opt it into GH_TOKEN forwarding
+  // (default 0 for every other agent: devops, verifiers).
+  updateContainerConfigScalars(ag.id, { forward_gh_token: 1 });
 
   // Mount the copymind-app source at /workspace/extra/copymind-app (read-only).
   // The wake-receiver pulls this to remote HEAD on every wake event so the

@@ -29,6 +29,7 @@ export interface ContainerConfigRow {
   bash_gating_enabled: number; // 0 | 1 — screen Bash against the allowlist
   bash_allowed_patterns: string; // JSON: string[] glob patterns
   host_cwd: string | null; // host-runtime working dir (null → group dir)
+  forward_gh_token: number; // 0 | 1 — forward GH_TOKEN into the agent (Fixer only)
   updated_at: string;
 }
 
