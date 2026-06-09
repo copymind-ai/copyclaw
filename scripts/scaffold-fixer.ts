@@ -227,17 +227,40 @@ print \`$GH_TOKEN\` — pass it inside the URL/header as shown.
      -d '{"title":"<title>","head":"fix/'"$SLUG"'","base":"main","body":"<what + why, repro, diagnosis>"}'
    \`\`\`
 
-6. Record it on the issue with \`mcp__copymind-support__link_pr(issue_id, "<pr html_url>")\`
+6. **Verify CI before announcing.** Pushing the branch triggers GitHub Actions
+   against the head commit — confirm the checks go green before you announce the PR.
+   Poll the check runs (the agent has \`curl\`, not \`gh\`) until each is \`completed\`:
+   \`\`\`bash
+   SHA="$(git -C "/tmp/$SLUG" rev-parse HEAD)"
+   curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \\
+     "https://api.github.com/repos/copymind-ai/$REPO/commits/$SHA/check-runs"
+   \`\`\`
+   Each run has \`status\` (\`queued\`/\`in_progress\`/\`completed\`) and \`conclusion\`
+   (\`success\`/\`failure\`/\`neutral\`/\`skipped\`/\`timed_out\`/\`cancelled\`). Re-poll
+   (~20s apart, up to a few minutes) until all are \`completed\`, then:
+   - **All \`success\`/\`neutral\`/\`skipped\`** → green; proceed.
+   - **Any failing** → open that run's \`details_url\` / logs, diagnose, fix in
+     \`/tmp/$SLUG\`, then \`git commit\` + \`git push\` the same branch (updates the PR
+     and re-runs CI) and poll again. If your fix legitimately changes behavior an
+     existing test asserted, update that test in the same push. Repeat until green,
+     or stop after a few honest attempts and report the still-failing check.
+
+7. Record it on the issue with \`mcp__copymind-support__link_pr(issue_id, "<pr html_url>")\`
    (posts the PR to the Slack thread + sets status \`pr-opened\`), then call
-   \`mark_mentions_processed\`.
+   \`mark_mentions_processed\`. State the CI result in the thread — "CI green", or the
+   exact check that is still red if you couldn't fix it.
 
-7. Clean up: \`rm -rf "/tmp/$SLUG"\`.
+8. Clean up: \`rm -rf "/tmp/$SLUG"\`.
 
-**Honesty — do not skip (clear-comms rule).** Local verification (running the
-app, capturing screenshots) is **not wired yet**. So:
-- Never claim the fix is "verified" or "tested". State plainly, in the PR body
-  and the Slack thread, that it is an **unverified proposed fix pending local
-  verification**.
+**Honesty — do not skip (clear-comms rule).**
+- **CI:** never announce a PR as ready while its checks are red. If you can't get
+  CI green, say so plainly in the Slack thread and name the failing check — don't
+  imply it's mergeable.
+- **Runtime verification** (running the app, reproducing the bug, capturing
+  screenshots) is a separate, heavier step that is **not wired into this flow**.
+  Green CI is **not** the same as a verified fix — never claim the fix is
+  "verified" or "tested" on the strength of CI alone. Call it a **proposed fix
+  (CI-green) pending runtime verification**.
 - If you cannot confidently fix it (root cause unclear, can't reproduce),
   **do not open a junk PR** — \`post_question\` with what you found and what
   you'd need (ids, repro steps), and stop.
