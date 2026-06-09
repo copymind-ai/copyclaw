@@ -161,8 +161,9 @@ async function spawnContainer(session: Session): Promise<void> {
     const groupDir = path.resolve(GROUPS_DIR, agentGroup.folder);
     const env = await buildHostEnv(sessDir, groupDir, claudeDir, contribution, agentIdentifier);
     const entry = path.join(process.cwd(), 'container', 'agent-runner', 'src', 'index.ts');
-    log.info('Spawning host agent process', { sessionId: session.id, agentGroup: agentGroup.name, containerName });
-    container = spawn('bun', ['run', entry], { cwd: groupDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const bunBin = resolveBunBin();
+    log.info('Spawning host agent process', { sessionId: session.id, agentGroup: agentGroup.name, bunBin });
+    container = spawn(bunBin, ['run', entry], { cwd: groupDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
   } else {
     const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
     const args = await buildContainerArgs(
@@ -559,6 +560,29 @@ async function buildContainerArgs(
  *   - `host.docker.internal` (a container-only alias) → 127.0.0.1
  * Throws if the gateway is unreachable (same contract as the Docker path).
  */
+/**
+ * Resolve the `bun` binary for the host runtime. The launchd-spawned host
+ * process's PATH usually omits `~/.bun/bin`, so probe known locations and fall
+ * back to PATH resolution. Override with NANOCLAW_BUN_BIN.
+ */
+function resolveBunBin(): string {
+  const home = process.env.HOME;
+  const candidates = [
+    process.env.NANOCLAW_BUN_BIN,
+    home ? path.join(home, '.bun', 'bin', 'bun') : undefined,
+    '/opt/homebrew/bin/bun',
+    '/usr/local/bin/bun',
+  ].filter((c): c is string => Boolean(c));
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {
+      /* keep probing */
+    }
+  }
+  return 'bun';
+}
+
 async function extractOneCliHostEnv(agentIdentifier: string): Promise<Record<string, string>> {
   const tmp: string[] = [];
   const ok = await onecli.applyContainerConfig(tmp, { addHostMapping: false, agent: agentIdentifier });
