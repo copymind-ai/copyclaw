@@ -21,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, GROUPS_DIR } from '../src/config.js';
+import type { AdditionalMountConfig } from '../src/container-config.js';
 import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.js';
 import { initDb } from '../src/db/connection.js';
 import {
@@ -69,13 +70,21 @@ verify branch=<branch> env=<url> repro=<exact steps> prod_user=<uuid|none> expec
 - **psql** — \`$LOCAL_DEV_PG_URL\` is the local/branch Postgres (writable — seed
   repro state, read back what the app wrote). \`$SUPPORT_PG_URL\` is prod
   (READ-only — copy a real user's shape if the repro needs it). Never write prod.
+- **seed tool** — \`/workspace/extra/seed-tools/seed-test-user-from-prod.ts\`.
+  Run \`bun /workspace/extra/seed-tools/seed-test-user-from-prod.ts <prod-user-id>\`
+  to overlay a real prod user into the local DB and get back seeded local creds
+  (JSON last line: \`email\` / \`password\`=\`test\` / \`user_id\`). This is how you reach
+  a user-specific or authenticated state.
 
 ## Procedure
 
 1. Parse the request: branch, env URL, repro steps, prod_user, expected.
-2. **Seed repro state** if the repro needs a specific user/state — via psql
-   against \`$LOCAL_DEV_PG_URL\`, or by driving the app UI. (The standard dev seed
-   user is \`user@copymind.me\` / \`test\`.)
+2. **Seed repro state** if the repro needs a specific user/state. Use the **seed
+   tool** above with \`prod_user\` (or any prod user with the relevant state), then
+   log in as the returned local user. For finer control, write rows directly via
+   psql against \`$LOCAL_DEV_PG_URL\`. **Never drive the welcome-quiz onboarding UI
+   to manufacture a user** — it's a slow dead end. (The standard dev seed user is
+   \`user@copymind.me\` / \`test\` if you just need any logged-in user.)
 3. **Capture proof.** Drive the repro flow with agent-browser and record the
    relevant state both ways:
    - the **fixed** behavior on this branch env (screenshots + the DB rows the
@@ -144,6 +153,23 @@ async function main(): Promise<void> {
   const apt: string[] = existing?.packages_apt ? (JSON.parse(existing.packages_apt) as string[]) : [];
   const aptChanged = !apt.includes('postgresql-client');
   if (aptChanged) updateContainerConfigJson(ag.id, 'packages_apt', [...apt, 'postgresql-client']);
+
+  // Mount the copyclaw scripts dir (read-only) so the verifier can run the
+  // seed-from-prod tool instead of driving the onboarding UI. The hostPath must
+  // be allowlisted in ~/.config/nanoclaw/mount-allowlist.json.
+  const seedToolsMount: AdditionalMountConfig = {
+    hostPath: path.join(process.cwd(), 'scripts'),
+    containerPath: 'seed-tools',
+    readonly: true,
+  };
+  const currentMounts: AdditionalMountConfig[] = existing?.additional_mounts
+    ? (JSON.parse(existing.additional_mounts) as AdditionalMountConfig[])
+    : [];
+  const updatedMounts = [
+    ...currentMounts.filter((m) => m.hostPath !== seedToolsMount.hostPath),
+    seedToolsMount,
+  ];
+  updateContainerConfigJson(ag.id, 'additional_mounts', updatedMounts);
 
   const fixer = getAgentGroupByFolder('fixer');
   let wiredFixerToVerifier = false;

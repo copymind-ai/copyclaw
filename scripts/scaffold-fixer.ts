@@ -126,11 +126,29 @@ You have four resources:
      tool (\`agent-browser\`) when a question is "what does the user
      actually see" or you need a screenshot to support an answer.
    - \`$LOCAL_DEV_PG_URL\` — the local Supabase Postgres (separate from
-     prod). Reserved for upcoming reproduction workflows.
+     prod), **writable**. This is where you seed reproduction state.
 
    **NEVER point the browser at the prod URL (\`app.copymind.com\`)** —
    only the local dev URL. Use the local stack to verify behavior, not
    prod.
+
+5. **Seed tool** — \`/workspace/extra/seed-tools/seed-test-user-from-prod.ts\`.
+   To reproduce a user-specific or authenticated state locally, do **NOT**
+   click through the welcome-quiz onboarding UI. Overlay the affected prod
+   user into the local DB instead:
+
+   \`\`\`bash
+   bun /workspace/extra/seed-tools/seed-test-user-from-prod.ts <prod-user-id>
+   \`\`\`
+
+   It reads that prod user's per-user rows (read-only via \`$SUPPORT_PG_URL\`),
+   mints a fresh local auth user, and overlays the rows into
+   \`$LOCAL_DEV_PG_URL\`. Its last stdout line is JSON with the seeded local
+   \`email\` / \`password\` (always \`test\`) / \`user_id\` — log in with those at
+   \`$LOCAL_DEV_APP_URL\` to land directly in the user's state, then reproduce.
+   If the bug isn't tied to one user (e.g. a layout/font-size issue), seed any
+   prod user with the relevant state — or just answer from the code.
+   **Never drive the onboarding quiz to manufacture a user.**
 
 ## Procedure
 
@@ -190,9 +208,17 @@ fresh clone (see below), never in the mount.
 
 ## Fixing & opening PRs (ONLY on an explicit fix request)
 
-Enter this flow **only** when the reporter explicitly asks you to fix it /
-open a PR (\`fix\`, \`open a PR\`, \`patch\`, \`make the change\`). For every other
-mention, answer per the Procedure and stop — never open a PR unsolicited.
+Enter this flow **only** when someone in the thread **explicitly asks for a
+code change** — wording like "fix it", "open a PR", "patch this", "make the
+change". It must be a request to *change code*, not merely to look at it.
+
+**Assignment is NOT a fix request.** "Hand this to copiclaw", "can you take
+this", "assigning to the bot", "@copiclaw", or the issue just being routed to
+you means **investigate and answer** — it does **not** authorize a PR. If you
+believe a fix is warranted but no one asked for one, answer per the Procedure
+(diagnosis + the change you'd recommend, with file paths) and **ask** whether
+they want you to open the PR. Never open a PR unsolicited, and never push a
+branch / spin up an environment "just in case".
 
 You can write to two repos via \`$GH_TOKEN\` (already in your env):
 \`copymind-app\` (web) and \`copymind-react-native\` (mobile). Choose the repo the
@@ -370,11 +396,22 @@ async function main(): Promise<void> {
     containerPath: 'copymind-app',
     readonly: true,
   };
+  // Mount the copyclaw scripts dir (read-only) so the agent can run the
+  // seed-from-prod tool at /workspace/extra/seed-tools/seed-test-user-from-prod.ts
+  // instead of driving the onboarding UI. Path must be allowlisted in
+  // ~/.config/nanoclaw/mount-allowlist.json.
+  const seedToolsMount: AdditionalMountConfig = {
+    hostPath: path.join(process.cwd(), 'scripts'),
+    containerPath: 'seed-tools',
+    readonly: true,
+  };
   const currentMounts: AdditionalMountConfig[] = existing?.additional_mounts
     ? (JSON.parse(existing.additional_mounts) as AdditionalMountConfig[])
     : [];
-  const filteredMounts = currentMounts.filter((m) => m.hostPath !== desiredMount.hostPath);
-  const updatedMounts = [...filteredMounts, desiredMount];
+  const desired = [desiredMount, seedToolsMount];
+  const desiredHostPaths = new Set(desired.map((m) => m.hostPath));
+  const filteredMounts = currentMounts.filter((m) => !desiredHostPaths.has(m.hostPath));
+  const updatedMounts = [...filteredMounts, ...desired];
   updateContainerConfigJson(ag.id, 'additional_mounts', updatedMounts);
 
   // psql client for the read-only Postgres role. Installed at image build
