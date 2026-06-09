@@ -583,6 +583,31 @@ function resolveBunBin(): string {
   return 'bun';
 }
 
+/**
+ * Locate the `claude-code` CLI on the host. The Docker image installs it at
+ * `/pnpm/claude`; on the host it lives wherever it was globally installed.
+ * Set `NANOCLAW_CLAUDE_CODE_BIN` to pin an absolute path (the launchd PATH is
+ * narrow and won't include nvm/bun bins). Returns undefined if none found, in
+ * which case the SDK falls back to its built-in default.
+ */
+function resolveClaudeCodeBin(): string | undefined {
+  const home = process.env.HOME;
+  const candidates = [
+    process.env.NANOCLAW_CLAUDE_CODE_BIN,
+    home ? path.join(home, '.bun', 'bin', 'claude') : undefined,
+    '/opt/homebrew/bin/claude',
+    '/usr/local/bin/claude',
+  ].filter((c): c is string => Boolean(c));
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {
+      /* keep probing */
+    }
+  }
+  return undefined;
+}
+
 async function extractOneCliHostEnv(agentName: string, agentIdentifier: string): Promise<Record<string, string>> {
   // Register the agent first (mirrors the Docker path in buildContainerArgs);
   // applyContainerConfig fetches per-agent config and returns false otherwise.
@@ -668,6 +693,8 @@ async function buildHostEnv(
     NANOCLAW_AGENT_DIR: groupDir,
     HOME: homeDir,
   };
+  const claudeBin = resolveClaudeCodeBin();
+  if (claudeBin) env.CLAUDE_CODE_EXECUTABLE = claudeBin;
   if (SUPPORT_PG_URL) env.SUPPORT_PG_URL = SUPPORT_PG_URL;
   if (LOCAL_DEV_APP_URL) env.LOCAL_DEV_APP_URL = LOCAL_DEV_APP_URL;
   if (LOCAL_DEV_PG_URL) env.LOCAL_DEV_PG_URL = LOCAL_DEV_PG_URL;
