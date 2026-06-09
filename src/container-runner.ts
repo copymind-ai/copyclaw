@@ -159,7 +159,7 @@ async function spawnContainer(session: Session): Promise<void> {
     const claudeDir = prepareGroupFilesystem(agentGroup, containerConfig, true);
     const sessDir = sessionDir(agentGroup.id, session.id);
     const groupDir = path.resolve(GROUPS_DIR, agentGroup.folder);
-    const env = await buildHostEnv(sessDir, groupDir, claudeDir, contribution, agentIdentifier);
+    const env = await buildHostEnv(sessDir, groupDir, claudeDir, contribution, agentGroup.name, agentIdentifier);
     const entry = path.join(process.cwd(), 'container', 'agent-runner', 'src', 'index.ts');
     const bunBin = resolveBunBin();
     log.info('Spawning host agent process', { sessionId: session.id, agentGroup: agentGroup.name, bunBin });
@@ -583,7 +583,10 @@ function resolveBunBin(): string {
   return 'bun';
 }
 
-async function extractOneCliHostEnv(agentIdentifier: string): Promise<Record<string, string>> {
+async function extractOneCliHostEnv(agentName: string, agentIdentifier: string): Promise<Record<string, string>> {
+  // Register the agent first (mirrors the Docker path in buildContainerArgs);
+  // applyContainerConfig fetches per-agent config and returns false otherwise.
+  await onecli.ensureAgent({ name: agentName, identifier: agentIdentifier });
   const tmp: string[] = [];
   const ok = await onecli.applyContainerConfig(tmp, { addHostMapping: false, agent: agentIdentifier });
   if (!ok) throw new Error('OneCLI gateway not applied (host runtime) — refusing to spawn without credentials');
@@ -624,6 +627,7 @@ async function buildHostEnv(
   groupDir: string,
   claudeDir: string,
   contribution: ProviderContainerContribution,
+  agentName: string,
   agentIdentifier: string,
 ): Promise<NodeJS.ProcessEnv> {
   const homeDir = path.join(sessDir, '.host-home');
@@ -640,7 +644,7 @@ async function buildHostEnv(
     fs.symlinkSync(claudeDir, dotClaude);
   }
 
-  const onecliEnv = await extractOneCliHostEnv(agentIdentifier);
+  const onecliEnv = await extractOneCliHostEnv(agentName, agentIdentifier);
 
   // GitHub bypasses the gateway proxy (same rationale as the Docker path). A
   // host agent also runs local dev tooling (docker/supabase/git on loopback)
