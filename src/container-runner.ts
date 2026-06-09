@@ -695,6 +695,22 @@ async function buildHostEnv(
     .filter(Boolean)
     .join(',');
 
+  // Host agents (devops) run real host tooling — npm/node, docker, supabase,
+  // git — that the narrow launchd PATH doesn't include. Prepend the dirs where
+  // they actually live: the node bin dir (alongside the resolved claude-code /
+  // bun bins), Homebrew, /usr/local, and Docker.app. Best-effort: only existing
+  // dirs are added, so this is a no-op on hosts that lack them.
+  const toolDirCandidates = [
+    NANOCLAW_CLAUDE_CODE_BIN ? path.dirname(NANOCLAW_CLAUDE_CODE_BIN) : undefined,
+    NANOCLAW_BUN_BIN ? path.dirname(NANOCLAW_BUN_BIN) : undefined,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/Applications/Docker.app/Contents/Resources/bin',
+  ].filter((d): d is string => Boolean(d) && fs.existsSync(d!));
+  const augmentedPath = [...new Set([...toolDirCandidates, ...(process.env.PATH || '').split(':')])]
+    .filter(Boolean)
+    .join(':');
+
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     TZ: TIMEZONE,
@@ -710,6 +726,7 @@ async function buildHostEnv(
     // Isolate Claude session state without overriding HOME (keeps real
     // git/ssh/dev tooling intact).
     CLAUDE_CONFIG_DIR: claudeDir,
+    PATH: augmentedPath,
   };
   const claudeBin = resolveClaudeCodeBin();
   if (claudeBin) env.CLAUDE_CODE_EXECUTABLE = claudeBin;
