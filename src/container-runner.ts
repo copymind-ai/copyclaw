@@ -53,8 +53,11 @@ import type { AgentGroup, Session } from './types.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL, apiKey: ONECLI_API_KEY });
 
-/** Active containers tracked by session ID. */
-const activeContainers = new Map<string, { process: ChildProcess; containerName: string }>();
+/** Active agents tracked by session ID (Docker containers or host processes). */
+const activeContainers = new Map<
+  string,
+  { process: ChildProcess; containerName: string; runtime: 'docker' | 'host' }
+>();
 
 /**
  * In-flight wake promises, keyed by session id. Deduplicates concurrent
@@ -135,32 +138,47 @@ async function spawnContainer(session: Session): Promise<void> {
   // buildMounts and buildContainerArgs so side effects (mkdir, etc.) fire once.
   const { provider, contribution } = resolveProviderContribution(session, agentGroup, containerConfig);
 
-  const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
   const containerName = `nanoclaw-v2-${agentGroup.folder}-${Date.now()}`;
   // OneCLI agent identifier is always the agent group id — stable across
   // sessions and reversible via getAgentGroup() for approval routing.
   const agentIdentifier = agentGroup.id;
-  const args = await buildContainerArgs(
-    mounts,
-    containerName,
-    agentGroup,
-    containerConfig,
-    provider,
-    contribution,
-    agentIdentifier,
-  );
+  const runtime = (containerConfig.runtime || 'docker') === 'host' ? 'host' : 'docker';
 
-  log.info('Spawning container', { sessionId: session.id, agentGroup: agentGroup.name, containerName });
-
-  // Clear any orphan heartbeat from a previous container instance — the
-  // sweep's ceiling check treats a missing file as "fresh spawn, give grace"
-  // (host-sweep.ts line 87). Without this, the stale mtime can trigger an
-  // immediate kill before the new container touches the file itself.
+  // Clear any orphan heartbeat from a previous instance — the sweep's ceiling
+  // check treats a missing file as "fresh spawn, give grace" (host-sweep.ts).
+  // Without this, a stale mtime can trigger an immediate kill before the new
+  // process touches the file itself.
   fs.rmSync(heartbeatPath(agentGroup.id, session.id), { force: true });
 
-  const container = spawn(CONTAINER_RUNTIME_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let container: ChildProcess;
+  if (runtime === 'host') {
+    // Host runtime: run the agent-runner as a plain bun process (no Docker),
+    // for agents that need host docker/simulators (e.g. devops). Paths are
+    // redirected via NANOCLAW_WORKSPACE/AGENT_DIR; credentials via the extracted
+    // OneCLI gateway env. See buildHostEnv / agent-runner/src/paths.ts.
+    const claudeDir = prepareGroupFilesystem(agentGroup, containerConfig, true);
+    const sessDir = sessionDir(agentGroup.id, session.id);
+    const groupDir = path.resolve(GROUPS_DIR, agentGroup.folder);
+    const env = await buildHostEnv(sessDir, groupDir, claudeDir, contribution, agentIdentifier);
+    const entry = path.join(process.cwd(), 'container', 'agent-runner', 'src', 'index.ts');
+    log.info('Spawning host agent process', { sessionId: session.id, agentGroup: agentGroup.name, containerName });
+    container = spawn('bun', ['run', entry], { cwd: groupDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  } else {
+    const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
+    const args = await buildContainerArgs(
+      mounts,
+      containerName,
+      agentGroup,
+      containerConfig,
+      provider,
+      contribution,
+      agentIdentifier,
+    );
+    log.info('Spawning container', { sessionId: session.id, agentGroup: agentGroup.name, containerName });
+    container = spawn(CONTAINER_RUNTIME_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  }
 
-  activeContainers.set(session.id, { process: container, containerName });
+  activeContainers.set(session.id, { process: container, containerName, runtime });
   markContainerRunning(session.id);
 
   // Log stderr
@@ -202,7 +220,13 @@ export function killContainer(sessionId: string, reason: string, onExit?: () => 
     entry.process.once('close', onExit);
   }
 
-  log.info('Killing container', { sessionId, reason, containerName: entry.containerName });
+  log.info('Killing container', { sessionId, reason, containerName: entry.containerName, runtime: entry.runtime });
+  if (entry.runtime === 'host') {
+    // Host process: SIGTERM the bun process; the runner's handlers finalize
+    // outbound.db. The 'close' handler clears activeContainers + heartbeat.
+    entry.process.kill('SIGTERM');
+    return;
+  }
   try {
     stopContainer(entry.containerName);
   } catch {
@@ -243,6 +267,28 @@ function resolveProviderContribution(
   return { provider, contribution };
 }
 
+/**
+ * Idempotent per-group filesystem prep, shared by the Docker and host runtimes:
+ * init the group dirs, sync skill symlinks, and (re)compose CLAUDE.md. Returns
+ * the per-group `.claude-shared` dir (Claude SDK state + skill symlinks).
+ *
+ * `hostRuntime` controls the skill symlink target: Docker sees skills at the
+ * `/app/skills` RO mount; a host process has no mount, so symlinks must point
+ * at the real repo path (`container/skills`).
+ */
+function prepareGroupFilesystem(
+  agentGroup: AgentGroup,
+  containerConfig: import('./container-config.js').ContainerConfig,
+  hostRuntime: boolean,
+): string {
+  initGroupFilesystem(agentGroup);
+  const claudeDir = path.join(DATA_DIR, 'v2-sessions', agentGroup.id, '.claude-shared');
+  const skillTargetBase = hostRuntime ? path.join(process.cwd(), 'container', 'skills') : '/app/skills';
+  syncSkillSymlinks(claudeDir, containerConfig, skillTargetBase);
+  composeGroupClaudeMd(agentGroup);
+  return claudeDir;
+}
+
 function buildMounts(
   agentGroup: AgentGroup,
   session: Session,
@@ -251,18 +297,10 @@ function buildMounts(
 ): VolumeMount[] {
   const projectRoot = process.cwd();
 
-  // Per-group filesystem state lives forever after first creation. Init is
-  // idempotent: it only writes paths that don't already exist, so this call
-  // is a no-op for groups that have spawned before.
-  initGroupFilesystem(agentGroup);
-
-  // Sync skill symlinks based on container.json selection before mounting.
-  const claudeDir = path.join(DATA_DIR, 'v2-sessions', agentGroup.id, '.claude-shared');
-  syncSkillSymlinks(claudeDir, containerConfig);
-
-  // Compose CLAUDE.md fresh every spawn from the shared base, enabled skill
-  // fragments, and MCP server instructions. See `claude-md-compose.ts`.
-  composeGroupClaudeMd(agentGroup);
+  // Idempotent group filesystem prep (init dirs, skill symlinks, compose
+  // CLAUDE.md). Shared with the host runtime — Docker skill symlinks target
+  // /app/skills (RO mount).
+  const claudeDir = prepareGroupFilesystem(agentGroup, containerConfig, false);
 
   const mounts: VolumeMount[] = [];
   const sessDir = sessionDir(agentGroup.id, session.id);
@@ -343,7 +381,14 @@ function buildMounts(
  * selection. Each symlink points to a container path (/app/skills/<name>)
  * so it's dangling on the host but valid inside the container.
  */
-function syncSkillSymlinks(claudeDir: string, containerConfig: import('./container-config.js').ContainerConfig): void {
+function syncSkillSymlinks(
+  claudeDir: string,
+  containerConfig: import('./container-config.js').ContainerConfig,
+  // Where the skill targets live. In Docker the runner sees them at
+  // /app/skills (a RO mount); for the host runtime there's no mount, so the
+  // symlinks must point at the real repo path (container/skills).
+  skillTargetBase: string = '/app/skills',
+): void {
   const skillsDir = path.join(claudeDir, 'skills');
   if (!fs.existsSync(skillsDir)) {
     fs.mkdirSync(skillsDir, { recursive: true });
@@ -395,7 +440,7 @@ function syncSkillSymlinks(claudeDir: string, containerConfig: import('./contain
       /* missing */
     }
     if (!exists) {
-      fs.symlinkSync(`/app/skills/${skill}`, linkPath);
+      fs.symlinkSync(`${skillTargetBase}/${skill}`, linkPath);
     }
   }
 }
@@ -502,6 +547,104 @@ async function buildContainerArgs(
   args.push('-c', 'exec bun run /app/src/index.ts');
 
   return args;
+}
+
+/**
+ * Extract the OneCLI gateway env for a HOST process. The SDK only knows how to
+ * mutate a Docker args array (applyContainerConfig pushes -e/-v), so run it
+ * against a throwaway array and lift the result onto a process env:
+ *   - each `-e KEY=VALUE` → env[KEY]
+ *   - a cert env value pointing at a `-v <hostSrc>:<containerTarget>` mount
+ *     target is remapped to the host source path (there's no mount on the host)
+ *   - `host.docker.internal` (a container-only alias) → 127.0.0.1
+ * Throws if the gateway is unreachable (same contract as the Docker path).
+ */
+async function extractOneCliHostEnv(agentIdentifier: string): Promise<Record<string, string>> {
+  const tmp: string[] = [];
+  const ok = await onecli.applyContainerConfig(tmp, { addHostMapping: false, agent: agentIdentifier });
+  if (!ok) throw new Error('OneCLI gateway not applied (host runtime) — refusing to spawn without credentials');
+
+  const targetToHostSrc = new Map<string, string>();
+  for (let i = 0; i < tmp.length - 1; i++) {
+    if (tmp[i] === '-v') {
+      const parts = tmp[i + 1].split(':');
+      if (parts.length >= 2) targetToHostSrc.set(parts[1], parts[0]);
+    }
+  }
+
+  const env: Record<string, string> = {};
+  for (let i = 0; i < tmp.length - 1; i++) {
+    if (tmp[i] !== '-e') continue;
+    const kv = tmp[i + 1];
+    const eq = kv.indexOf('=');
+    if (eq < 0) continue;
+    const key = kv.slice(0, eq);
+    let value = kv.slice(eq + 1);
+    if (targetToHostSrc.has(value)) value = targetToHostSrc.get(value)!;
+    value = value.replace(/host\.docker\.internal/g, '127.0.0.1');
+    env[key] = value;
+  }
+  return env;
+}
+
+/**
+ * Build the environment for a host-runtime agent process. Inherits the host env
+ * (PATH etc. — a host agent runs real host tooling), then overlays TZ, the
+ * forwarded app vars, provider env, the OneCLI gateway env, the NANOCLAW_* path
+ * overrides (session dir + group dir), and a host HOME whose `.claude` points at
+ * the per-group Claude state dir (the Docker runtime achieves this with a
+ * mount-rename; on the host we symlink).
+ */
+async function buildHostEnv(
+  sessDir: string,
+  groupDir: string,
+  claudeDir: string,
+  contribution: ProviderContainerContribution,
+  agentIdentifier: string,
+): Promise<NodeJS.ProcessEnv> {
+  const homeDir = path.join(sessDir, '.host-home');
+  fs.mkdirSync(homeDir, { recursive: true });
+  const dotClaude = path.join(homeDir, '.claude');
+  try {
+    if (fs.lstatSync(dotClaude).isSymbolicLink() && fs.readlinkSync(dotClaude) === claudeDir) {
+      // already correct
+    } else {
+      fs.rmSync(dotClaude, { recursive: true, force: true });
+      fs.symlinkSync(claudeDir, dotClaude);
+    }
+  } catch {
+    fs.symlinkSync(claudeDir, dotClaude);
+  }
+
+  const onecliEnv = await extractOneCliHostEnv(agentIdentifier);
+
+  // GitHub bypasses the gateway proxy (same rationale as the Docker path). A
+  // host agent also runs local dev tooling (docker/supabase/git on loopback)
+  // whose traffic must NOT route through the gateway, so widen NO_PROXY.
+  const noProxy = [
+    process.env.NO_PROXY,
+    'github.com,api.github.com,codeload.github.com,uploads.github.com,objects.githubusercontent.com',
+    'localhost,127.0.0.1,::1,host.docker.internal',
+  ]
+    .filter(Boolean)
+    .join(',');
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    TZ: TIMEZONE,
+    ...contribution.env,
+    ...onecliEnv,
+    NO_PROXY: noProxy,
+    no_proxy: noProxy,
+    NANOCLAW_WORKSPACE: sessDir,
+    NANOCLAW_AGENT_DIR: groupDir,
+    HOME: homeDir,
+  };
+  if (SUPPORT_PG_URL) env.SUPPORT_PG_URL = SUPPORT_PG_URL;
+  if (LOCAL_DEV_APP_URL) env.LOCAL_DEV_APP_URL = LOCAL_DEV_APP_URL;
+  if (LOCAL_DEV_PG_URL) env.LOCAL_DEV_PG_URL = LOCAL_DEV_PG_URL;
+  if (GH_TOKEN) env.GH_TOKEN = GH_TOKEN;
+  return env;
 }
 
 /** Build a per-agent-group Docker image with custom packages. */
