@@ -96,6 +96,8 @@ async function main(): Promise<void> {
     additionalDirectories: additionalDirectories.length > 0 ? additionalDirectories : undefined,
     model: config.model,
     effort: config.effort,
+    bashGatingEnabled: config.bashGatingEnabled,
+    bashAllowedPatterns: config.bashAllowedPatterns,
   });
 
   await runPollLoop({

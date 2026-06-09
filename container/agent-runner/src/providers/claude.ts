@@ -6,6 +6,7 @@ import { query as sdkQuery, type HookCallback, type PreCompactHookInput } from '
 
 import { clearContainerToolInFlight, setContainerToolInFlight } from '../db/connection.js';
 import { CONVERSATIONS_DIR } from '../paths.js';
+import { checkBashCommand } from './bash-allowlist.js';
 import { registerProvider } from './provider-registry.js';
 import type { AgentProvider, AgentQuery, McpServerConfig, ProviderEvent, ProviderOptions, QueryInput } from './types.js';
 
@@ -159,26 +160,42 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
  * script. Defense-in-depth: if SDK_DISALLOWED_TOOLS slips through somehow,
  * block the call here instead of letting the agent hang.
  */
-const preToolUseHook: HookCallback = async (input) => {
-  const i = input as { tool_name?: string; tool_input?: Record<string, unknown> };
-  const toolName = i.tool_name ?? '';
-  if (SDK_DISALLOWED_TOOLS.includes(toolName)) {
-    return {
-      decision: 'block',
-      stopReason: `Tool '${toolName}' is not available in this environment — use the nanoclaw equivalent.`,
-    } as unknown as ReturnType<HookCallback>;
-  }
-  // Bash exposes its timeout via the tool_input.timeout field (ms). Any other
-  // tool: no declared timeout.
-  const declaredTimeoutMs =
-    toolName === 'Bash' && typeof i.tool_input?.timeout === 'number' ? (i.tool_input.timeout as number) : null;
-  try {
-    setContainerToolInFlight(toolName, declaredTimeoutMs);
-  } catch (err) {
-    log(`PreToolUse: failed to record container_state: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  return { continue: true };
-};
+function createPreToolUseHook(bashGatingEnabled: boolean, bashAllowedPatterns: string[]): HookCallback {
+  return async (input) => {
+    const i = input as { tool_name?: string; tool_input?: Record<string, unknown> };
+    const toolName = i.tool_name ?? '';
+    if (SDK_DISALLOWED_TOOLS.includes(toolName)) {
+      return {
+        decision: 'block',
+        stopReason: `Tool '${toolName}' is not available in this environment — use the nanoclaw equivalent.`,
+      } as unknown as ReturnType<HookCallback>;
+    }
+    // Bash allowlist (host-runtime agents). When gating is enabled, every Bash
+    // command is screened for shell metacharacters and matched against the
+    // allowlist before it runs. The check is the safety boundary for agents
+    // with a real host shell — see bash-allowlist.ts.
+    if (toolName === 'Bash' && bashGatingEnabled) {
+      const command = typeof i.tool_input?.command === 'string' ? i.tool_input.command : '';
+      const verdict = checkBashCommand(command, true, bashAllowedPatterns);
+      if (!verdict.allowed) {
+        return {
+          decision: 'block',
+          stopReason: `Bash command blocked: ${verdict.reason}`,
+        } as unknown as ReturnType<HookCallback>;
+      }
+    }
+    // Bash exposes its timeout via the tool_input.timeout field (ms). Any other
+    // tool: no declared timeout.
+    const declaredTimeoutMs =
+      toolName === 'Bash' && typeof i.tool_input?.timeout === 'number' ? (i.tool_input.timeout as number) : null;
+    try {
+      setContainerToolInFlight(toolName, declaredTimeoutMs);
+    } catch (err) {
+      log(`PreToolUse: failed to record container_state: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return { continue: true };
+  };
+}
 
 /** Clear in-flight tool on PostToolUse / PostToolUseFailure. */
 const postToolUseHook: HookCallback = async () => {
@@ -338,6 +355,8 @@ export class ClaudeProvider implements AgentProvider {
   private additionalDirectories?: string[];
   private model?: string;
   private effort?: string;
+  private bashGatingEnabled: boolean;
+  private bashAllowedPatterns: string[];
 
   constructor(options: ProviderOptions = {}) {
     this.assistantName = options.assistantName;
@@ -345,6 +364,8 @@ export class ClaudeProvider implements AgentProvider {
     this.additionalDirectories = options.additionalDirectories;
     this.model = options.model;
     this.effort = options.effort;
+    this.bashGatingEnabled = options.bashGatingEnabled ?? false;
+    this.bashAllowedPatterns = options.bashAllowedPatterns ?? [];
     this.env = {
       ...(options.env ?? {}),
       CLAUDE_CODE_AUTO_COMPACT_WINDOW,
@@ -419,7 +440,7 @@ export class ClaudeProvider implements AgentProvider {
         settingSources: ['project', 'user', 'local'],
         mcpServers: this.mcpServers,
         hooks: {
-          PreToolUse: [{ hooks: [preToolUseHook] }],
+          PreToolUse: [{ hooks: [createPreToolUseHook(this.bashGatingEnabled, this.bashAllowedPatterns)] }],
           PostToolUse: [{ hooks: [postToolUseHook] }],
           PostToolUseFailure: [{ hooks: [postToolUseHook] }],
           PreCompact: [{ hooks: [createPreCompactHook(this.assistantName)] }],

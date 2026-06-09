@@ -80,12 +80,7 @@ describe('refreshRepoMounts', () => {
 
     expect(mockExecFile).toHaveBeenCalledTimes(3);
     expect(mockExecFile.mock.calls[0][0]).toBe('git');
-    expect(mockExecFile.mock.calls[0][1]).toEqual([
-      '-C',
-      '/srv/copymind-app',
-      'rev-parse',
-      '--git-common-dir',
-    ]);
+    expect(mockExecFile.mock.calls[0][1]).toEqual(['-C', '/srv/copymind-app', 'rev-parse', '--git-common-dir']);
     // Fetch runs against the resolved common-dir (.git in the mock).
     expect(mockExecFile.mock.calls[1][1]).toEqual(['-C', '.git', 'fetch', '--quiet', 'origin']);
     // Reset runs against the worktree.

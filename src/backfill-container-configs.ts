@@ -66,6 +66,8 @@ export function backfillContainerConfigs(): void {
       additional_mounts: JSON.stringify(legacy.additionalMounts ?? []),
       cli_scope: 'group',
       runtime: 'docker',
+      bash_gating_enabled: 0,
+      bash_allowed_patterns: '[]',
       updated_at: new Date().toISOString(),
     };
 

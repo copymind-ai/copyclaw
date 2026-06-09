@@ -50,6 +50,14 @@ export interface ProviderOptions {
    * through to the underlying SDK. If omitted, the SDK default is used.
    */
   effort?: string;
+  /**
+   * When true, every Bash command is screened against `bashAllowedPatterns`
+   * before it runs (see bash-allowlist.ts). For host-runtime agents that hold
+   * a real shell. Defaults to false (no gating).
+   */
+  bashGatingEnabled?: boolean;
+  /** Allowlist glob patterns (`*` = any chars) consulted when gating is on. */
+  bashAllowedPatterns?: string[];
 }
 
 export interface QueryInput {

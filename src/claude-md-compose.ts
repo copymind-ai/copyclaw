@@ -106,6 +106,24 @@ export function composeGroupClaudeMd(group: AgentGroup): void {
     }
   }
 
+  // Bash allowlist — when this agent's shell is gated, tell it exactly which
+  // commands it may run so it doesn't burn turns hitting the wall.
+  if (configRow?.bash_gating_enabled === 1) {
+    const patterns = JSON.parse(configRow.bash_allowed_patterns ?? '[]') as string[];
+    desired.set('bash-allowlist.md', {
+      type: 'inline',
+      content: [
+        '## Bash command allowlist',
+        '',
+        'You run on the host with a **restricted shell**. Only commands matching these patterns are permitted — everything else is blocked before it runs:',
+        '',
+        ...patterns.map((p) => `- \`${p}\``),
+        '',
+        'Chaining, piping, redirection, command substitution, and backgrounding (`;`, `&&`, `||`, `|`, `>`, `` ` ``, `$(`, `&`) are **always blocked** — run one simple command at a time.',
+      ].join('\n'),
+    });
+  }
+
   // Reconcile: drop stale, write desired.
   for (const existing of fs.readdirSync(fragmentsDir)) {
     if (!desired.has(existing)) {

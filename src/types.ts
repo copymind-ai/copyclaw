@@ -26,6 +26,8 @@ export interface ContainerConfigRow {
   additional_mounts: string; // JSON: AdditionalMountConfig[]
   cli_scope: string; // 'disabled' | 'group' | 'global'
   runtime: string; // 'docker' | 'host' — where the agent-runner runs
+  bash_gating_enabled: number; // 0 | 1 — screen Bash against the allowlist
+  bash_allowed_patterns: string; // JSON: string[] glob patterns
   updated_at: string;
 }
 

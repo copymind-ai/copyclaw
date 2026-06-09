@@ -21,6 +21,8 @@ export interface RunnerConfig {
   mcpServers: Record<string, McpServerConfig>;
   model?: string;
   effort?: string;
+  bashGatingEnabled: boolean;
+  bashAllowedPatterns: string[];
 }
 
 const DEFAULT_MAX_MESSAGES = 10;
@@ -50,6 +52,8 @@ export function loadConfig(): RunnerConfig {
     mcpServers: (raw.mcpServers as RunnerConfig['mcpServers']) || {},
     model: (raw.model as string) || undefined,
     effort: (raw.effort as string) || undefined,
+    bashGatingEnabled: raw.bashGatingEnabled === true,
+    bashAllowedPatterns: Array.isArray(raw.bashAllowedPatterns) ? (raw.bashAllowedPatterns as string[]) : [],
   };
 
   return _config;

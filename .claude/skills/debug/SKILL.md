@@ -5,7 +5,14 @@ description: Debug container agent issues. Use when things aren't working, conta
 
 # NanoClaw Container Debugging
 
-This guide covers debugging the containerized agent execution system.
+This guide covers debugging the containerized agent execution system — generic
+mechanics that apply to **any** agent group: logs, auth, env vars, mounts, session
+resumption, rebuilds, and the manual `docker run` test harness.
+
+> For the specific Mac-mini–hosted **Fixer** support agent — SSH access, the
+> `copymind-support` MCP, prod-DB reproduction, wake triggers, reading the Slack
+> thread, and fix→PR verification — use the `debug-mac-fixer` skill instead. That
+> operational detail is not duplicated here.
 
 ## Architecture Overview
 
