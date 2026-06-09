@@ -73,6 +73,8 @@ export interface ContainerConfig {
   bashGatingEnabled?: boolean;
   /** Allowlist glob patterns (`*` = any chars) consulted when gating is on. */
   bashAllowedPatterns?: string[];
+  /** Host-runtime working directory (absolute). Undefined → group dir. */
+  hostCwd?: string;
 }
 
 /** Build a `ContainerConfig` from a DB row + agent group identity. */
@@ -96,6 +98,7 @@ export function configFromDb(row: ContainerConfigRow, group: AgentGroup): Contai
     runtime: row.runtime ?? 'docker',
     bashGatingEnabled: row.bash_gating_enabled === 1,
     bashAllowedPatterns: JSON.parse(row.bash_allowed_patterns ?? '[]') as string[],
+    hostCwd: row.host_cwd ?? undefined,
   };
 }
 

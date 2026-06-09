@@ -28,6 +28,7 @@ export interface ContainerConfigRow {
   runtime: string; // 'docker' | 'host' — where the agent-runner runs
   bash_gating_enabled: number; // 0 | 1 — screen Bash against the allowlist
   bash_allowed_patterns: string; // JSON: string[] glob patterns
+  host_cwd: string | null; // host-runtime working dir (null → group dir)
   updated_at: string;
 }
 

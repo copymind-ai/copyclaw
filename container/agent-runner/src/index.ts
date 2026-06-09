@@ -38,7 +38,10 @@ function log(msg: string): void {
   console.error(`[agent-runner] ${msg}`);
 }
 
-const CWD = AGENT_DIR;
+// SDK working directory for the agent's tools (Bash/Read). Defaults to the
+// group dir; a host-runtime agent can pin it elsewhere (NANOCLAW_CWD) — e.g.
+// devops runs from a repo worktree so `dev wt up` works without a cd.
+const CWD = process.env.NANOCLAW_CWD || AGENT_DIR;
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -52,7 +55,20 @@ async function main(): Promise<void> {
   // /workspace/agent/CLAUDE.md — the composed entry imports the shared
   // base (/app/CLAUDE.md) and each enabled module's fragment. Per-group
   // memory lives in /workspace/agent/CLAUDE.local.md (auto-loaded).
-  const instructions = buildSystemPromptAddendum(config.assistantName || undefined);
+  let instructions = buildSystemPromptAddendum(config.assistantName || undefined);
+
+  // When the SDK cwd is pinned away from the group dir (host agent), Claude
+  // Code auto-loads CLAUDE.md/CLAUDE.local.md from the cwd — i.e. the pinned
+  // repo's, not the agent's. Fold the group's CLAUDE.local.md (its procedure)
+  // into the system prompt so a host agent keeps its own instructions.
+  if (CWD !== AGENT_DIR) {
+    try {
+      const localMd = fs.readFileSync(path.join(AGENT_DIR, 'CLAUDE.local.md'), 'utf8').trim();
+      if (localMd) instructions = `${instructions}\n\n${localMd}`;
+    } catch {
+      /* no per-group memory file — fine */
+    }
+  }
 
   // Discover additional directories mounted at /workspace/extra/*
   const additionalDirectories: string[] = [];

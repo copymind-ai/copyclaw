@@ -68,6 +68,7 @@ export function backfillContainerConfigs(): void {
       runtime: 'docker',
       bash_gating_enabled: 0,
       bash_allowed_patterns: '[]',
+      host_cwd: null,
       updated_at: new Date().toISOString(),
     };
 

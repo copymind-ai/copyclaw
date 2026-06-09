@@ -161,11 +161,27 @@ async function spawnContainer(session: Session): Promise<void> {
     const claudeDir = prepareGroupFilesystem(agentGroup, containerConfig, true);
     const sessDir = sessionDir(agentGroup.id, session.id);
     const groupDir = path.resolve(GROUPS_DIR, agentGroup.folder);
-    const env = await buildHostEnv(sessDir, groupDir, claudeDir, contribution, agentGroup.name, agentIdentifier);
+    // host_cwd lets an agent run its tools from a fixed location (devops from a
+    // repo worktree so `dev wt up` works without a cd). Falls back to groupDir.
+    const hostCwd = containerConfig.hostCwd && fs.existsSync(containerConfig.hostCwd) ? containerConfig.hostCwd : groupDir;
+    const env = await buildHostEnv(
+      sessDir,
+      groupDir,
+      claudeDir,
+      contribution,
+      agentGroup.name,
+      agentIdentifier,
+      hostCwd,
+    );
     const entry = path.join(process.cwd(), 'container', 'agent-runner', 'src', 'index.ts');
     const bunBin = resolveBunBin();
-    log.info('Spawning host agent process', { sessionId: session.id, agentGroup: agentGroup.name, bunBin });
-    container = spawn(bunBin, ['run', entry], { cwd: groupDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    log.info('Spawning host agent process', {
+      sessionId: session.id,
+      agentGroup: agentGroup.name,
+      bunBin,
+      hostCwd,
+    });
+    container = spawn(bunBin, ['run', entry], { cwd: hostCwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
   } else {
     const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
     const args = await buildContainerArgs(
@@ -643,11 +659,18 @@ async function extractOneCliHostEnv(agentName: string, agentIdentifier: string):
 
 /**
  * Build the environment for a host-runtime agent process. Inherits the host env
- * (PATH etc. — a host agent runs real host tooling), then overlays TZ, the
- * forwarded app vars, provider env, the OneCLI gateway env, the NANOCLAW_* path
- * overrides (session dir + group dir), and a host HOME whose `.claude` points at
- * the per-group Claude state dir (the Docker runtime achieves this with a
- * mount-rename; on the host we symlink).
+ * (PATH, and critically the real HOME — a host agent runs real host tooling
+ * like the `dev` scripts, git, and ssh that live under the user's home), then
+ * overlays TZ, the forwarded app vars, provider env, the OneCLI gateway env,
+ * and the NANOCLAW_* path/cwd overrides.
+ *
+ * Claude state is isolated NOT by overriding HOME (that would hide the user's
+ * git/ssh/tooling) but via CLAUDE_CONFIG_DIR pointed at the per-group state dir
+ * — so the agent's sessions/transcripts stay separate while host tooling works.
+ *
+ * GH_TOKEN is deliberately NOT forwarded to host agents: the only host agents
+ * are env-managers (devops) and verifiers, which must never push git. Only the
+ * Docker-runtime Fixer (via buildContainerArgs) holds GH_TOKEN.
  */
 async function buildHostEnv(
   sessDir: string,
@@ -656,21 +679,8 @@ async function buildHostEnv(
   contribution: ProviderContainerContribution,
   agentName: string,
   agentIdentifier: string,
+  hostCwd: string,
 ): Promise<NodeJS.ProcessEnv> {
-  const homeDir = path.join(sessDir, '.host-home');
-  fs.mkdirSync(homeDir, { recursive: true });
-  const dotClaude = path.join(homeDir, '.claude');
-  try {
-    if (fs.lstatSync(dotClaude).isSymbolicLink() && fs.readlinkSync(dotClaude) === claudeDir) {
-      // already correct
-    } else {
-      fs.rmSync(dotClaude, { recursive: true, force: true });
-      fs.symlinkSync(claudeDir, dotClaude);
-    }
-  } catch {
-    fs.symlinkSync(claudeDir, dotClaude);
-  }
-
   const onecliEnv = await extractOneCliHostEnv(agentName, agentIdentifier);
 
   // GitHub bypasses the gateway proxy (same rationale as the Docker path). A
@@ -693,14 +703,19 @@ async function buildHostEnv(
     no_proxy: noProxy,
     NANOCLAW_WORKSPACE: sessDir,
     NANOCLAW_AGENT_DIR: groupDir,
-    HOME: homeDir,
+    // Tools (Bash/Read) operate from here; agent-runner reads it as the SDK
+    // cwd. Distinct from NANOCLAW_AGENT_DIR (config/state/CLAUDE.local.md).
+    NANOCLAW_CWD: hostCwd,
+    // Isolate Claude session state without overriding HOME (keeps real
+    // git/ssh/dev tooling intact).
+    CLAUDE_CONFIG_DIR: claudeDir,
   };
   const claudeBin = resolveClaudeCodeBin();
   if (claudeBin) env.CLAUDE_CODE_EXECUTABLE = claudeBin;
   if (SUPPORT_PG_URL) env.SUPPORT_PG_URL = SUPPORT_PG_URL;
   if (LOCAL_DEV_APP_URL) env.LOCAL_DEV_APP_URL = LOCAL_DEV_APP_URL;
   if (LOCAL_DEV_PG_URL) env.LOCAL_DEV_PG_URL = LOCAL_DEV_PG_URL;
-  if (GH_TOKEN) env.GH_TOKEN = GH_TOKEN;
+  // GH_TOKEN intentionally omitted — host agents must never push git.
   return env;
 }
 
