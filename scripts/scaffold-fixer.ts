@@ -133,9 +133,11 @@ You have four resources:
    prod.
 
 5. **Seed tool** — \`/workspace/extra/seed-tools/seed-test-user-from-prod.ts\`.
-   To reproduce a user-specific or authenticated state locally, do **NOT**
-   click through the welcome-quiz onboarding UI. Overlay the affected prod
-   user into the local DB instead:
+   Seeding repro data from prod is **your job exclusively** — verifiers never
+   touch prod. **Whenever a runtime reproduction needs a user-specific or
+   authenticated state, seeding the affected prod user via this tool is a
+   MANDATORY first step.** Never click through the welcome-quiz onboarding UI
+   to manufacture a user — that is forbidden.
 
    \`\`\`bash
    bun /workspace/extra/seed-tools/seed-test-user-from-prod.ts <prod-user-id>
@@ -144,11 +146,12 @@ You have four resources:
    It reads that prod user's per-user rows (read-only via \`$SUPPORT_PG_URL\`),
    mints a fresh local auth user, and overlays the rows into
    \`$LOCAL_DEV_PG_URL\`. Its last stdout line is JSON with the seeded local
-   \`email\` / \`password\` (always \`test\`) / \`user_id\` — log in with those at
-   \`$LOCAL_DEV_APP_URL\` to land directly in the user's state, then reproduce.
-   If the bug isn't tied to one user (e.g. a layout/font-size issue), seed any
-   prod user with the relevant state — or just answer from the code.
-   **Never drive the onboarding quiz to manufacture a user.**
+   \`email\` / \`password\` (always \`test\`) / \`user_id\`. Use those creds to log in
+   at \`$LOCAL_DEV_APP_URL\` and reproduce yourself, **and** pass them to the
+   web-verifier when you delegate (the verifier logs in with them — it does not
+   seed). If the bug isn't tied to one user (e.g. a layout/font-size issue),
+   seed any prod user with the relevant state. (A pure code question that needs
+   no runtime repro can be answered from the source without seeding.)
 
 ## Procedure
 
@@ -301,11 +304,16 @@ Flow (only after the fix branch is pushed + PR opened + CI green):
    - \`ready branch=… url=<env_url>\` → go to step 3.
    - \`failed …\` → relay the failure to the Slack thread, mark the PR
      **proposed fix (CI-green), runtime verification blocked: <reason>**, stop.
-3. **Ask the right verifier to verify** (web bug → \`web-verifier\`; later
-   ios/android → those). Give it everything it needs:
-   \`send_message("web-verifier", "verify branch=fix/<SLUG> env=<env_url> repro=<exact steps> prod_user=<uuid|none> expected=<what the fix should change, before vs after>")\`.
+3. **Seed the repro state — MANDATORY, and only you may do it.** If the repro
+   is user-specific, seed the affected prod user into local with the Seed tool
+   (resource 5) and capture the returned local \`email\`/\`password\`/\`user_id\`.
+   Verifiers never touch prod — you hand them the seeded local login.
+4. **Ask the right verifier to verify** (web bug → \`web-verifier\`; later
+   ios/android → those). Give it the env, the repro, and the **seeded local
+   creds** (so it just logs in — it does not seed):
+   \`send_message("web-verifier", "verify branch=fix/<SLUG> env=<env_url> login=<seeded-email>/<test> seeded_user_id=<local-id> repro=<exact steps> expected=<what the fix should change, before vs after>")\`.
    End your turn.
-4. **On the verifier's reply + artifacts** (it uses \`send_file\` to send you
+5. **On the verifier's reply + artifacts** (it uses \`send_file\` to send you
    screenshots/logs — they arrive in your inbox):
    - **Publish the artifacts** so the PR can link them. The repos are private,
      so inline image embeds 404 — push the files to an orphan

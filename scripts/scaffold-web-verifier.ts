@@ -21,7 +21,6 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, GROUPS_DIR } from '../src/config.js';
-import type { AdditionalMountConfig } from '../src/container-config.js';
 import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.js';
 import { initDb } from '../src/db/connection.js';
 import {
@@ -55,40 +54,38 @@ hold no GH_TOKEN. You do not touch production.
 A message from \`fixer\`:
 
 <message from="fixer">
-verify branch=<branch> env=<url> repro=<exact steps> prod_user=<uuid|none> expected=<before vs after>
+verify branch=<branch> env=<url> login=<email>/<password> seeded_user_id=<id> repro=<exact steps> expected=<before vs after>
 </message>
 
 \`env\` is a branch environment \`devops\` brought up, reachable at a
 \`http://host.docker.internal:<port>\` URL. **Never** point your browser at prod
-(\`app.copymind.com\`).
+(\`app.copymind.com\`). \`login\` is a **local** test user that Fixer already seeded
+for you — you log in with it; you do **not** create or seed users yourself.
 
 ## Tools
 
-- **agent-browser** — headless Chrome. Drive the \`env\` URL: log in, click
-  through the repro flow, take screenshots. Save each screenshot to a file in
-  your workspace so you can attach it.
-- **psql** — \`$LOCAL_DEV_PG_URL\` is the local/branch Postgres (writable — seed
-  repro state, read back what the app wrote). \`$SUPPORT_PG_URL\` is prod
-  (READ-only — copy a real user's shape if the repro needs it). Never write prod.
-- **seed tool** — \`/workspace/extra/seed-tools/seed-test-user-from-prod.ts\`.
-  Run \`bun /workspace/extra/seed-tools/seed-test-user-from-prod.ts <prod-user-id>\`
-  to overlay a real prod user into the local DB and get back seeded local creds
-  (JSON last line: \`email\` / \`password\`=\`test\` / \`user_id\`). This is how you reach
-  a user-specific or authenticated state.
+- **agent-browser** — headless Chrome. Drive the \`env\` URL: log in with the
+  \`login\` creds Fixer gave you, click through the repro flow, take screenshots.
+  Save each screenshot to a file in your workspace so you can attach it.
+- **psql** — \`$LOCAL_DEV_PG_URL\` (the local/branch Postgres). Use it to **read
+  back** what the app wrote for the seeded \`seeded_user_id\` (the rows that prove
+  the fix). Local only — never connect to prod.
 
 ## Procedure
 
-1. Parse the request: branch, env URL, repro steps, prod_user, expected.
-2. **Seed repro state** if the repro needs a specific user/state. Use the **seed
-   tool** above with \`prod_user\` (or any prod user with the relevant state), then
-   log in as the returned local user. For finer control, write rows directly via
-   psql against \`$LOCAL_DEV_PG_URL\`. **Never drive the welcome-quiz onboarding UI
-   to manufacture a user** — it's a slow dead end. (The standard dev seed user is
-   \`user@copymind.me\` / \`test\` if you just need any logged-in user.)
+1. Parse the request: branch, env URL, \`login\` creds, \`seeded_user_id\`, repro
+   steps, expected.
+2. **Log in** with the \`login\` creds Fixer gave you at the \`env\` URL. Fixer has
+   already seeded the user's state from prod — you do **not** seed and you do
+   **not** touch prod. **Never drive the welcome-quiz onboarding UI** to create a
+   user. (If Fixer sent no \`login\`, the repro isn't user-specific — proceed with
+   the steps as given; if it clearly needs a user and none was provided, reply
+   asking Fixer to seed one rather than making your own.)
 3. **Capture proof.** Drive the repro flow with agent-browser and record the
    relevant state both ways:
    - the **fixed** behavior on this branch env (screenshots + the DB rows the
-     app wrote, read via psql), against the **expected** change fixer described.
+     app wrote for \`seeded_user_id\`, read via psql), against the **expected**
+     change fixer described.
    - where it helps, contrast with the **before** (buggy) behavior.
 4. **Decide a verdict** (be strict — fixer marks the PR "verified" only on yours):
    - \`verified\` — expected behavior present / bug gone, with proof.
@@ -102,8 +99,10 @@ verify branch=<branch> env=<url> repro=<exact steps> prod_user=<uuid|none> expec
 
 - **Verify-only.** Never clone/edit/commit/push; no git writes. If a task implies
   changing code, refuse and tell \`fixer\`.
-- **Never touch prod.** Browser + all writes target the local/branch env only;
-  \`$SUPPORT_PG_URL\` is read-only.
+- **Never touch prod, never seed.** Browser + psql target the local/branch env
+  only. Seeding prod data is Fixer's job exclusively — you log in with the local
+  creds Fixer hands you. Never connect to prod, never run a seed tool, never
+  drive onboarding to create a user.
 - **Report honestly.** Quote what you actually observed. Don't claim
   \`verified\` unless the proof shows it. Always end by sending fixer a verdict
   plus the artifacts.
@@ -154,22 +153,9 @@ async function main(): Promise<void> {
   const aptChanged = !apt.includes('postgresql-client');
   if (aptChanged) updateContainerConfigJson(ag.id, 'packages_apt', [...apt, 'postgresql-client']);
 
-  // Mount the copyclaw scripts dir (read-only) so the verifier can run the
-  // seed-from-prod tool instead of driving the onboarding UI. The hostPath must
-  // be allowlisted in ~/.config/nanoclaw/mount-allowlist.json.
-  const seedToolsMount: AdditionalMountConfig = {
-    hostPath: path.join(process.cwd(), 'scripts'),
-    containerPath: 'seed-tools',
-    readonly: true,
-  };
-  const currentMounts: AdditionalMountConfig[] = existing?.additional_mounts
-    ? (JSON.parse(existing.additional_mounts) as AdditionalMountConfig[])
-    : [];
-  const updatedMounts = [
-    ...currentMounts.filter((m) => m.hostPath !== seedToolsMount.hostPath),
-    seedToolsMount,
-  ];
-  updateContainerConfigJson(ag.id, 'additional_mounts', updatedMounts);
+  // Note: the web-verifier does NOT get the seed tool — seeding from prod is
+  // Fixer's exclusive job. The verifier logs in with the local creds Fixer
+  // hands it in the verify message.
 
   const fixer = getAgentGroupByFolder('fixer');
   let wiredFixerToVerifier = false;
