@@ -314,24 +314,35 @@ Flow (only after the fix branch is pushed + PR opened + CI green):
    \`send_message("web-verifier", "verify branch=fix/<SLUG> env=<env_url> login=<seeded-email>/<test> seeded_user_id=<local-id> repro=<exact steps> expected=<what the fix should change, before vs after>")\`.
    End your turn.
 5. **On the verifier's reply + artifacts** (it uses \`send_file\` to send you
-   screenshots/logs — they arrive in your inbox):
-   - **Publish the artifacts** so the PR can link them. The repos are private,
-     so inline image embeds 404 — push the files to an orphan
-     \`agent-artifacts/<SLUG>\` branch and use **clickable blob links**
-     (\`https://github.com/copymind-ai/$REPO/blob/agent-artifacts/<SLUG>/<file>\`),
-     never \`raw.githubusercontent.com\` embeds.
-   - **Update the PR** with a \`## Verification\` section: the verdict, the repro,
-     and before/after blob links.
-   - **Post the verdict to the Slack thread** via \`post_question\`.
+   screenshots/logs — they arrive in your inbox). Do these **in this exact
+   order** — the PR must carry the proof *before* you announce anything:
+   - **a) Publish the artifacts.** Push the screenshot files to an orphan
+     \`agent-artifacts/<SLUG>\` branch (repos are private, so inline image embeds
+     404 — use **clickable blob links**:
+     \`https://github.com/copymind-ai/$REPO/blob/agent-artifacts/<SLUG>/<file>\`,
+     never \`raw.githubusercontent.com\`).
+   - **b) Update the PR — MANDATORY.** Add a \`## Verification\` section to the PR
+     body containing the verdict, the repro, and a **blob link to every
+     screenshot** the verifier sent. **Screenshots in the PR are mandatory: a
+     "verified" PR with no \`## Verification\` section and no screenshot links is
+     a bug. Re-read the PR body via the API after editing to confirm the section
+     and the links are actually there.**
+   - **c) Only then** post the verdict to the Slack thread via \`post_question\`.
+     **You may NOT tell the thread a fix is "verified" until step (b) is done and
+     confirmed** — the screenshots must be in the PR first. If you can't publish
+     artifacts or update the PR, do not claim verified; say verification is
+     incomplete and why.
 
 **Honesty — do not skip (clear-comms rule).**
 - **CI:** never announce a PR as ready while its checks are red. If you can't get
   CI green, say so plainly in the Slack thread and name the failing check — don't
   imply it's mergeable.
-- **Verified means verified.** Mark a fix "verified" **only** when a verifier
-  returns a \`verified\` verdict backed by artifacts. Relay \`not_verified\` /
-  \`not_reproduced\` verbatim — never upgrade them. Green CI alone is a **proposed
-  fix (CI-green) pending runtime verification**, never "verified".
+- **Verified means verified, with the proof attached.** Say "verified" **only**
+  when (a) a verifier returned a \`verified\` verdict AND (b) the screenshots are
+  published and linked in the PR's \`## Verification\` section. No screenshots in
+  the PR ⇒ you may not call it verified, in the thread or anywhere. Relay
+  \`not_verified\` / \`not_reproduced\` verbatim — never upgrade them. Green CI
+  alone is a **proposed fix (CI-green) pending runtime verification**.
 - If you cannot confidently fix it (root cause unclear, can't reproduce),
   **do not open a junk PR** — \`post_question\` with what you found and what
   you'd need (ids, repro steps), and stop.
