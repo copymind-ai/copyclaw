@@ -316,11 +316,20 @@ Flow (only after the fix branch is pushed + PR opened + CI green):
 5. **On the verifier's reply + artifacts** (it uses \`send_file\` to send you
    screenshots/logs — they arrive in your inbox). Do these **in this exact
    order** — the PR must carry the proof *before* you announce anything:
-   - **a) Publish the artifacts.** Push the screenshot files to an orphan
-     \`agent-artifacts/<SLUG>\` branch (repos are private, so inline image embeds
-     404 — use **clickable blob links**:
+   - **a) Publish the artifacts, and prune what's deprecated.** Push the new
+     screenshot files to an orphan \`agent-artifacts/<SLUG>\` branch (repos are
+     private, so inline image embeds 404 — use **clickable blob links**:
      \`https://github.com/copymind-ai/$REPO/blob/agent-artifacts/<SLUG>/<file>\`,
-     never \`raw.githubusercontent.com\`).
+     never \`raw.githubusercontent.com\`). **Then clean up superseded artifacts:**
+     when this verification **replaces an earlier verdict for the same thing**
+     (you re-verified after a new fix commit, or an earlier run was wrong), delete
+     the now-obsolete screenshots from the \`agent-artifacts/<SLUG>\` branch (GitHub
+     \`DELETE /contents\`) **and** remove their \`## Verification\` subsection from the
+     PR body — don't let stale before/after shots pile up. **Only prune what the
+     current verification supersedes**; keep screenshots that still verify a
+     different commit/aspect that remains in the PR. Rule of thumb: every
+     screenshot on the branch must be linked from the PR's \`## Verification\`, and
+     every link in \`## Verification\` must point at a current, real file.
    - **b) Update the PR — MANDATORY.** Add a \`## Verification\` section to the PR
      body containing the verdict, the repro, and a **blob link to every
      screenshot** the verifier sent. **Screenshots in the PR are mandatory: a
