@@ -42,6 +42,13 @@ import type { AgentGroup } from '../src/types.js';
 const FOLDER = 'web-verifier';
 const NAME = 'WebVerifier';
 
+// Narrow, post-only support surface — lets the verifier narrate progress to a
+// support issue's Slack thread without the full support MCP (no reading every
+// ticket / mutating status). OneCLI injects SUPPORT_PROGRESS_API_KEY by host.
+const PROGRESS_MCP_NAME = 'copymind-progress';
+const PROGRESS_MCP_URL =
+  process.env.COPYMIND_PROGRESS_MCP_URL || 'https://app.copymind.com/api/support/progress/mcp';
+
 const CLAUDE_LOCAL = `# WebVerifier
 
 You are a **verification-only** agent. Given a running web environment, you
@@ -54,13 +61,16 @@ hold no GH_TOKEN. You do not touch production.
 A message from \`fixer\`:
 
 <message from="fixer">
-verify branch=<branch> env=<url> login=<email>/<password> seeded_user_id=<id> repro=<exact steps> expected=<before vs after>
+verify branch=<branch> env=<url> login=<email>/<password> seeded_user_id=<id> issue=<id> repro=<exact steps> expected=<before vs after>
 </message>
 
 \`env\` is a branch environment \`devops\` brought up, reachable at a
 \`http://host.docker.internal:<port>\` URL. **Never** point your browser at prod
 (\`app.copymind.com\`). \`login\` is a **local** test user that Fixer already seeded
 for you — you log in with it; you do **not** create or seed users yourself.
+\`issue=<id>\` (when present) is the support issue whose Slack thread you narrate
+to — see **Progress updates**. It may be absent (operator/test runs) — then skip
+the thread posts.
 
 ## Tools
 
@@ -70,11 +80,23 @@ for you — you log in with it; you do **not** create or seed users yourself.
 - **psql** — \`$LOCAL_DEV_PG_URL\` (the local/branch Postgres). Use it to **read
   back** what the app wrote for the seeded \`seeded_user_id\` (the rows that prove
   the fix). Local only — never connect to prod.
+- **\`mcp__${PROGRESS_MCP_NAME}__post_update(issue_id, text)\`** — post **one short
+  line** to the issue's Slack thread (narration only; changes nothing else).
+  Your only support tool. No \`issue\` → don't call it.
+
+## Progress updates (narrate to the thread)
+
+When the request carries \`issue=<id>\`, bracket your work with two posts:
+- at the **start**: \`post_update(issue, "🔬 Verifying \\\`<branch>\\\`…")\`
+- at the **end**, your verdict: \`post_update(issue, "🟢 Verified")\` /
+  \`post_update(issue, "🔴 Not verified: <short reason>")\` /
+  \`post_update(issue, "🟡 Couldn't reproduce the original bug")\`.
 
 ## Procedure
 
-1. Parse the request: branch, env URL, \`login\` creds, \`seeded_user_id\`, repro
-   steps, expected.
+1. Parse the request: branch, env URL, \`login\` creds, \`seeded_user_id\`,
+   \`issue\`, repro steps, expected. If \`issue\` present:
+   \`post_update(issue, "🔬 Verifying \\\`<branch>\\\`…")\`.
 2. **Log in** with the \`login\` creds Fixer gave you at the \`env\` URL. Fixer has
    already seeded the user's state from prod — you do **not** seed and you do
    **not** touch prod. **Never drive the welcome-quiz onboarding UI** to create a
@@ -94,6 +116,7 @@ for you — you log in with it; you do **not** create or seed users yourself.
 5. **Report to fixer.** For each artifact:
    \`send_file("fixer", "<path>", "<filename>", "<one-line caption>")\`. Then:
    \`send_message("fixer", "verdict=<verified|not_verified|not_reproduced> branch=<branch> notes=<concise: what you did, what you saw, file names>")\`.
+   If \`issue\` present, also \`post_update(issue, "<🟢/🔴/🟡 verdict line>")\` to the thread.
 
 ## Hard rules
 
@@ -153,9 +176,18 @@ async function main(): Promise<void> {
   const aptChanged = !apt.includes('postgresql-client');
   if (aptChanged) updateContainerConfigJson(ag.id, 'packages_apt', [...apt, 'postgresql-client']);
 
-  // Note: the web-verifier does NOT get the seed tool — seeding from prod is
-  // Fixer's exclusive job. The verifier logs in with the local creds Fixer
-  // hands it in the verify message.
+  // Wire the narrow progress MCP (post-only) so the verifier can narrate to the
+  // issue thread. Merge into any existing mcp_servers. No headers — OneCLI
+  // injects the SUPPORT_PROGRESS_API_KEY bearer by host pattern.
+  const mcpServers: Record<string, unknown> = existing?.mcp_servers
+    ? (JSON.parse(existing.mcp_servers) as Record<string, unknown>)
+    : {};
+  mcpServers[PROGRESS_MCP_NAME] = { type: 'http', url: PROGRESS_MCP_URL };
+  updateContainerConfigJson(ag.id, 'mcp_servers', mcpServers);
+
+  // Note: the web-verifier does NOT get the seed tool or the full support MCP —
+  // seeding from prod is Fixer's exclusive job, and it gets only the post-only
+  // progress surface. It logs in with the local creds Fixer hands it.
 
   const fixer = getAgentGroupByFolder('fixer');
   let wiredFixerToVerifier = false;
@@ -172,6 +204,7 @@ async function main(): Promise<void> {
   console.log(`  runtime:   docker`);
   console.log(`  cli_scope: disabled`);
   console.log(`  GH_TOKEN:  not forwarded (verify-only)`);
+  console.log(`  mcp:       ${PROGRESS_MCP_NAME} → ${PROGRESS_MCP_URL} (post-only)`);
   console.log(`  packages_apt.postgresql-client → ${aptChanged ? 'added (image rebuild required)' : 'already present'}`);
   if (fixer) {
     console.log(`  destinations: fixer→web-verifier ${wiredFixerToVerifier ? 'wired' : 'exists'}, web-verifier→fixer ${wiredVerifierToFixer ? 'wired' : 'exists'}`);

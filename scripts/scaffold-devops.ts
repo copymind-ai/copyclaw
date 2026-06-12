@@ -33,6 +33,7 @@ import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.
 import { initDb } from '../src/db/connection.js';
 import {
   ensureContainerConfig,
+  getContainerConfig,
   updateContainerConfigJson,
   updateContainerConfigScalars,
 } from '../src/db/container-configs.js';
@@ -54,6 +55,13 @@ const DEV_SCRIPT =
   process.env.DEVOPS_DEV_SCRIPT || path.join(HOME, 'repositories', 'dotfiles.git', 'scripts', 'dev.sh');
 const APP_WORKTREE =
   process.env.DEVOPS_APP_WORKTREE || path.join(HOME, 'repositories', 'copymind-app.git', 'main');
+
+// Narrow, post-only support surface — lets devops narrate progress to a support
+// issue's Slack thread without the full support MCP (which could read every
+// ticket / mutate status). OneCLI injects SUPPORT_PROGRESS_API_KEY by host.
+const PROGRESS_MCP_NAME = 'copymind-progress';
+const PROGRESS_MCP_URL =
+  process.env.COPYMIND_PROGRESS_MCP_URL || 'https://app.copymind.com/api/support/progress/mcp';
 
 // Bash allowlist. The absolute dev.sh path is the workhorse; the git verbs are
 // read/checkout only (no push/commit); docker/supabase are status + lifecycle.
@@ -107,13 +115,28 @@ Your working directory is the copymind-app primary worktree
 You're woken by messages from the \`fixer\` agent. They arrive as
 \`<message from="fixer">…</message>\`. Typical asks:
 
-- **"env up branch=<branch>"** — bring up the app+DB for that branch.
+- **"env up branch=<branch> issue=<id>"** — bring up the app+DB for that branch.
 - **"reset"** / **"seed"** — reset or seed the shared local Supabase.
 - **"status"** — report what's currently up.
 
+The \`issue=<id>\` field (when present) is the support issue whose Slack thread
+you narrate to — see **Progress updates** below. It may be absent (operator/test
+runs) — then just skip the thread posts.
+
+## Progress updates (narrate to the thread)
+
+When the message carries \`issue=<id>\`, post **one short line** to that issue's
+Slack thread at each significant transition with:
+
+\`mcp__${PROGRESS_MCP_NAME}__post_update(issue_id="<id>", text="<line>")\`
+
+This is your only support tool — it posts to the thread and changes nothing
+else. Keep lines short. No \`issue\` → don't call it.
+
 ## Procedure
 
-1. **env up branch=<branch>:**
+1. **env up branch=<branch> issue=<id>:**
+   - If \`issue\` present: \`post_update(issue, "🖥️ Bringing up a test env for \\\`<branch>\\\`…")\`.
    - Run \`${DEV_SCRIPT} wt up <branch>\` (from your pinned cwd). This fetches
      origin, creates the worktree, allocates a port, builds, and starts the app
      under Docker Compose.
@@ -123,6 +146,9 @@ You're woken by messages from the \`fixer\` agent. They arrive as
      run in Docker, so give them the \`host.docker.internal\` host, not
      \`localhost\`); on failure, \`failed branch=<branch> reason=<short reason +
      the key error line>\`.
+   - If \`issue\` present, also post the outcome:
+     \`post_update(issue, "✅ Env up — http://host.docker.internal:<port>")\` or
+     \`post_update(issue, "❌ Env-up failed: <short reason>")\`.
 
 2. **reset / seed:** run \`${DEV_SCRIPT} sb reset\` or \`${DEV_SCRIPT} sb seed\`,
    then reply \`done\` or \`failed reason=<…>\`.
@@ -186,6 +212,16 @@ async function main(): Promise<void> {
   });
   updateContainerConfigJson(ag.id, 'bash_allowed_patterns', ALLOWED_PATTERNS);
 
+  // Wire the narrow progress MCP (post-only) so devops can narrate to the issue
+  // thread. Merge into any existing mcp_servers. No headers — OneCLI injects the
+  // SUPPORT_PROGRESS_API_KEY bearer by host pattern.
+  const existing = getContainerConfig(ag.id);
+  const mcpServers: Record<string, unknown> = existing?.mcp_servers
+    ? (JSON.parse(existing.mcp_servers) as Record<string, unknown>)
+    : {};
+  mcpServers[PROGRESS_MCP_NAME] = { type: 'http', url: PROGRESS_MCP_URL };
+  updateContainerConfigJson(ag.id, 'mcp_servers', mcpServers);
+
   // Wire fixer ↔ devops so each can message the other.
   const fixer = getAgentGroupByFolder('fixer');
   let wiredFixerToDevops = false;
@@ -202,6 +238,7 @@ async function main(): Promise<void> {
   console.log(`  runtime:   host`);
   console.log(`  cli_scope: disabled`);
   console.log(`  host_cwd:  ${APP_WORKTREE}${fs.existsSync(APP_WORKTREE) ? '' : '  (MISSING!)'}`);
+  console.log(`  mcp:       ${PROGRESS_MCP_NAME} → ${PROGRESS_MCP_URL} (post-only)`);
   console.log(`  dev.sh:    ${DEV_SCRIPT}${fs.existsSync(DEV_SCRIPT) ? '' : '  (MISSING!)'}`);
   console.log(`  bash allowlist (${ALLOWED_PATTERNS.length} patterns):`);
   for (const p of ALLOWED_PATTERNS) console.log(`    - ${p}`);

@@ -92,7 +92,11 @@ You have four resources:
    OneCLI gateway):
    - \`mcp__copymind-support__list_pending_mentions\` — fetch your queue.
    - \`mcp__copymind-support__post_question(issue_id, text)\` — reply in the
-     issue's Slack thread.
+     issue's Slack thread (use ONLY when you need info back — it sets the issue
+     to \`needs-info\`).
+   - \`mcp__copymind-support__post_update(issue_id, text)\` — post a brief
+     progress line to the thread; changes nothing else. Use this to narrate
+     (see **Progress updates**).
    - \`mcp__copymind-support__mark_mentions_processed(issue_id)\` — ack the
      work so you don't see the same mention twice.
 
@@ -152,6 +156,31 @@ You have four resources:
    seed). If the bug isn't tied to one user (e.g. a layout/font-size issue),
    seed any prod user with the relevant state. (A pure code question that needs
    no runtime repro can be answered from the source without seeding.)
+
+## Progress updates (narrate as you go)
+
+A fix+verify run can span many minutes across several wakes. So a human watching
+the Slack thread isn't left in the dark, **post a brief one-line progress update
+at each significant transition** with
+\`mcp__copymind-support__post_update(issue_id, text)\` (it posts to the thread and
+changes nothing else — unlike \`post_question\`). Post the ones that match the
+path you actually take; one short line each; don't narrate trivia.
+
+- 📥 Pulled latest \`copymind-app\` (synced to HEAD)
+- 🔍 Gathered context (issue + user state + code)
+- 🐛 Reproduced it  ·  or  🤔 Couldn't reproduce yet
+- 🎯 Root cause — \`path/to/file.ts:NN\`
+- 📝 Fix plan ready
+- 🔧 Implementing on \`fix/<id>\`
+- 💾 Fix committed  ·  ⬆️ Pushed the branch
+- ⏳ CI running  ·  ✅ CI green  ·  or ❌ CI failing on \`<check>\` — fixing
+- 🟢 Verified — proof on the PR  ·  or 🔴 Not verified: \`<reason>\`
+
+Don't duplicate what's already auto-announced: opening the PR (\`link_pr\`) and
+status changes (\`mark_status\`) post to the thread on their own, and \`devops\` +
+the verifier post their *own* env-up / verifying / verdict lines (you pass them
+\`issue=<id>\`). Your final substantive answer still goes via \`post_question\` per
+the Hard rule.
 
 ## Procedure
 
@@ -299,7 +328,9 @@ env for verification") so a future wake knows the state.
 Flow (only after the fix branch is pushed + PR opened + CI green):
 
 1. **Ask devops to bring up the branch env:**
-   \`send_message("devops", "env up branch=fix/<SLUG>")\`. End your turn.
+   \`send_message("devops", "env up branch=fix/<SLUG> issue=<issue_id>")\`. End
+   your turn. (Pass \`issue=<issue_id>\` so devops + the verifier narrate their
+   own progress to the same thread — see **Progress updates**.)
 2. **On devops's reply:**
    - \`ready branch=… url=<env_url>\` → go to step 3.
    - \`failed …\` → relay the failure to the Slack thread, mark the PR
@@ -311,7 +342,7 @@ Flow (only after the fix branch is pushed + PR opened + CI green):
 4. **Ask the right verifier to verify** (web bug → \`web-verifier\`; later
    ios/android → those). Give it the env, the repro, and the **seeded local
    creds** (so it just logs in — it does not seed):
-   \`send_message("web-verifier", "verify branch=fix/<SLUG> env=<env_url> login=<seeded-email>/<test> seeded_user_id=<local-id> repro=<exact steps> expected=<what the fix should change, before vs after>")\`.
+   \`send_message("web-verifier", "verify branch=fix/<SLUG> env=<env_url> login=<seeded-email>/<test> seeded_user_id=<local-id> issue=<issue_id> repro=<exact steps> expected=<what the fix should change, before vs after>")\`.
    End your turn.
 5. **On the verifier's reply + artifacts** (it uses \`send_file\` to send you
    screenshots/logs — they arrive in your inbox). Do these **in this exact
