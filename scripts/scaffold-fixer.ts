@@ -179,6 +179,9 @@ path you actually take; one short line each; don't narrate trivia.
 - 🔧 Implementing on \`fix/<id>\` (approved)
 - 💾 Fix committed  ·  ⬆️ Pushed the branch
 - ⏳ CI running  ·  ✅ CI green  ·  or ❌ CI failing on \`<check>\` — fixing
+- 📨 Asked devops to bring up the env for \`fix/<id>\`  (post this right after the
+  \`send_message\` to devops — it's the dispatch record the post-compaction
+  self-check looks for; see **Runtime verification via the mesh**)
 - 🟢 Verified — proof on the PR  ·  or 🔴 Not verified: \`<reason>\`
 
 Don't duplicate what's already auto-announced: opening the PR (\`link_pr\`) and
@@ -401,12 +404,42 @@ wakes: **anchor everything to the PR and the issue thread**. Before delegating,
 record where you are (e.g. post to the issue thread: "fix pushed, bringing up
 env for verification") so a future wake knows the state.
 
+**Dispatch, don't narrate — this is the #1 way verification silently dies.**
+Writing "now I'll ask devops to bring up the env" or "waiting on devops" in your
+reasoning does **nothing**. A delegation happens only when you actually emit the
+\`send_message(...)\` tool call on this turn. You may end a turn in a "waiting
+for devops / the verifier" state **only if you have already called
+\`send_message\` to them on this same turn.** Claiming to wait without having sent
+the message is a dead stall: the other agent never woke, no reply will ever
+arrive, nothing re-wakes you, and the PR sits unverified and screenshot-less
+forever. If you catch yourself about to end a turn "waiting" on someone you did
+not just message — stop and send the message instead.
+
+**Survives compaction — confirm from the thread, never from memory.** Your
+context can be compacted mid-run, leaving you *believing* you already delegated
+when you did not. So a claimed wait must be backed by an **observable fact**, not
+a recollection: devops and each verifier post their own progress line to the
+issue thread (that's why you pass them \`issue=<id>\`). Before you settle into any
+"waiting for verification" state, call \`get_issue_thread(issue_id)\` and check:
+- **No devops env-up line** (e.g. "🖥️ Bringing up a test env…") and no
+  \`📨 Asked devops…\` line from you → devops was never asked. Send the \`env up\`
+  message now (step 1) rather than wait.
+- **No verifier line** ("🔬 Verifying…") after devops reported the env ready →
+  the verifier was never asked. Send the \`verify\` message now (step 4).
+The thread is the single source of truth for what has actually been dispatched.
+
 Flow (only after the fix branch is pushed + PR opened + CI green):
 
-1. **Ask devops to bring up the branch env:**
-   \`send_message("devops", "env up branch=fix/<SLUG> issue=<issue_id>")\`. End
-   your turn. (Pass \`issue=<issue_id>\` so devops + the verifier narrate their
-   own progress to the same thread — see **Progress updates**.)
+1. **Ask devops to bring up the branch env — this \`send_message\` is REQUIRED
+   before you may end the turn.** Emit it as an actual tool call, never a
+   sentence describing it:
+   \`send_message("devops", "env up branch=fix/<SLUG> issue=<issue_id>")\`.
+   (Pass \`issue=<issue_id>\` so devops + the verifier narrate their own progress
+   to the same thread — see **Progress updates**.) Then post the progress line
+   \`📨 Asked devops to bring up the env for fix/<SLUG>\` — this is your durable,
+   thread-visible record that the request actually went out (so a post-compaction
+   wake can tell dispatched-and-waiting apart from never-sent). Only then end
+   your turn.
 2. **On devops's reply:**
    - \`ready branch=… url=<env_url>\` → go to step 3.
    - \`failed …\` → relay the failure to the Slack thread, mark the PR
