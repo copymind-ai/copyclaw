@@ -56,12 +56,14 @@ const DEV_SCRIPT =
 const APP_WORKTREE =
   process.env.DEVOPS_APP_WORKTREE || path.join(HOME, 'repositories', 'copymind-app.git', 'main');
 
-// Narrow, post-only support surface — lets devops narrate progress to a support
-// issue's Slack thread without the full support MCP as a tool surface. OneCLI
-// injects SUPPORT_AGENT_API_KEY (reused) by host pattern.
-const PROGRESS_MCP_NAME = 'copymind-progress';
-const PROGRESS_MCP_URL =
-  process.env.COPYMIND_PROGRESS_MCP_URL || 'https://app.copymind.com/api/support/progress/mcp';
+// The copymind-support MCP — devops uses it ONLY to post progress updates to a
+// support issue's thread (post_update). OneCLI injects SUPPORT_AGENT_API_KEY by
+// host pattern. NOTE: this is the full support MCP, so other tools (post_question,
+// mark_status, …) are technically callable — devops must use only post_update
+// (enforced by instruction in CLAUDE.local.md, not by tool surface).
+const SUPPORT_MCP_NAME = 'copymind-support';
+const SUPPORT_MCP_URL =
+  process.env.COPYMIND_APP_MCP_URL || 'https://app.copymind.com/api/support/mcp';
 
 // Bash allowlist. The absolute dev.sh path is the workhorse; the git verbs are
 // read/checkout only (no push/commit); docker/supabase are status + lifecycle.
@@ -128,10 +130,12 @@ runs) — then just skip the thread posts.
 When the message carries \`issue=<id>\`, post **one short line** to that issue's
 Slack thread at each significant transition with:
 
-\`mcp__${PROGRESS_MCP_NAME}__post_update(issue_id="<id>", text="<line>")\`
+\`mcp__${SUPPORT_MCP_NAME}__post_update(issue_id="<id>", text="<line>")\`
 
-This is your only support tool — it posts to the thread and changes nothing
-else. Keep lines short. No \`issue\` → don't call it.
+\`post_update\` posts to the thread and changes nothing else. Keep lines short.
+No \`issue\` → don't call it. **Use ONLY \`post_update\` from this MCP** — never
+\`post_question\`, \`mark_status\`, \`link_pr\`, or any other support tool (those are
+the Fixer's; touching them would mutate a customer's ticket).
 
 ## Procedure
 
@@ -219,7 +223,7 @@ async function main(): Promise<void> {
   const mcpServers: Record<string, unknown> = existing?.mcp_servers
     ? (JSON.parse(existing.mcp_servers) as Record<string, unknown>)
     : {};
-  mcpServers[PROGRESS_MCP_NAME] = { type: 'http', url: PROGRESS_MCP_URL };
+  mcpServers[SUPPORT_MCP_NAME] = { type: 'http', url: SUPPORT_MCP_URL };
   updateContainerConfigJson(ag.id, 'mcp_servers', mcpServers);
 
   // Wire fixer ↔ devops so each can message the other.
@@ -238,7 +242,7 @@ async function main(): Promise<void> {
   console.log(`  runtime:   host`);
   console.log(`  cli_scope: disabled`);
   console.log(`  host_cwd:  ${APP_WORKTREE}${fs.existsSync(APP_WORKTREE) ? '' : '  (MISSING!)'}`);
-  console.log(`  mcp:       ${PROGRESS_MCP_NAME} → ${PROGRESS_MCP_URL} (post-only)`);
+  console.log(`  mcp:       ${SUPPORT_MCP_NAME} → ${SUPPORT_MCP_URL} (use only post_update)`);
   console.log(`  dev.sh:    ${DEV_SCRIPT}${fs.existsSync(DEV_SCRIPT) ? '' : '  (MISSING!)'}`);
   console.log(`  bash allowlist (${ALLOWED_PATTERNS.length} patterns):`);
   for (const p of ALLOWED_PATTERNS) console.log(`    - ${p}`);

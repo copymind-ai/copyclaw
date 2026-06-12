@@ -42,12 +42,14 @@ import type { AgentGroup } from '../src/types.js';
 const FOLDER = 'web-verifier';
 const NAME = 'WebVerifier';
 
-// Narrow, post-only support surface — gives the verifier only the post_update
-// tool (not the full support MCP). OneCLI injects SUPPORT_AGENT_API_KEY (reused)
-// by host pattern.
-const PROGRESS_MCP_NAME = 'copymind-progress';
-const PROGRESS_MCP_URL =
-  process.env.COPYMIND_PROGRESS_MCP_URL || 'https://app.copymind.com/api/support/progress/mcp';
+// The copymind-support MCP — the verifier uses it ONLY to post progress updates
+// to a support issue's thread (post_update). OneCLI injects SUPPORT_AGENT_API_KEY
+// by host pattern. NOTE: this is the full support MCP, so other tools are
+// technically callable — the verifier must use only post_update (enforced by
+// instruction in CLAUDE.local.md, not by tool surface).
+const SUPPORT_MCP_NAME = 'copymind-support';
+const SUPPORT_MCP_URL =
+  process.env.COPYMIND_APP_MCP_URL || 'https://app.copymind.com/api/support/mcp';
 
 const CLAUDE_LOCAL = `# WebVerifier
 
@@ -80,9 +82,11 @@ the thread posts.
 - **psql** — \`$LOCAL_DEV_PG_URL\` (the local/branch Postgres). Use it to **read
   back** what the app wrote for the seeded \`seeded_user_id\` (the rows that prove
   the fix). Local only — never connect to prod.
-- **\`mcp__${PROGRESS_MCP_NAME}__post_update(issue_id, text)\`** — post **one short
+- **\`mcp__${SUPPORT_MCP_NAME}__post_update(issue_id, text)\`** — post **one short
   line** to the issue's Slack thread (narration only; changes nothing else).
-  Your only support tool. No \`issue\` → don't call it.
+  No \`issue\` → don't call it. **Use ONLY \`post_update\` from this MCP** — never
+  \`post_question\`, \`mark_status\`, \`link_pr\`, or any other support tool (those
+  belong to the Fixer; touching them would mutate a customer's ticket).
 
 ## Progress updates (narrate to the thread)
 
@@ -182,7 +186,7 @@ async function main(): Promise<void> {
   const mcpServers: Record<string, unknown> = existing?.mcp_servers
     ? (JSON.parse(existing.mcp_servers) as Record<string, unknown>)
     : {};
-  mcpServers[PROGRESS_MCP_NAME] = { type: 'http', url: PROGRESS_MCP_URL };
+  mcpServers[SUPPORT_MCP_NAME] = { type: 'http', url: SUPPORT_MCP_URL };
   updateContainerConfigJson(ag.id, 'mcp_servers', mcpServers);
 
   // Note: the web-verifier does NOT get the seed tool or the full support MCP —
@@ -204,7 +208,7 @@ async function main(): Promise<void> {
   console.log(`  runtime:   docker`);
   console.log(`  cli_scope: disabled`);
   console.log(`  GH_TOKEN:  not forwarded (verify-only)`);
-  console.log(`  mcp:       ${PROGRESS_MCP_NAME} → ${PROGRESS_MCP_URL} (post-only)`);
+  console.log(`  mcp:       ${SUPPORT_MCP_NAME} → ${SUPPORT_MCP_URL} (use only post_update)`);
   console.log(`  packages_apt.postgresql-client → ${aptChanged ? 'added (image rebuild required)' : 'already present'}`);
   if (fixer) {
     console.log(`  destinations: fixer→web-verifier ${wiredFixerToVerifier ? 'wired' : 'exists'}, web-verifier→fixer ${wiredVerifierToFixer ? 'wired' : 'exists'}`);
