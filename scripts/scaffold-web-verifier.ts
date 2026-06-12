@@ -42,9 +42,9 @@ import type { AgentGroup } from '../src/types.js';
 const FOLDER = 'web-verifier';
 const NAME = 'WebVerifier';
 
-// Narrow, post-only support surface — lets the verifier narrate progress to a
-// support issue's Slack thread without the full support MCP (no reading every
-// ticket / mutating status). OneCLI injects SUPPORT_PROGRESS_API_KEY by host.
+// Narrow, post-only support surface — gives the verifier only the post_update
+// tool (not the full support MCP). OneCLI injects SUPPORT_AGENT_API_KEY (reused)
+// by host pattern.
 const PROGRESS_MCP_NAME = 'copymind-progress';
 const PROGRESS_MCP_URL =
   process.env.COPYMIND_PROGRESS_MCP_URL || 'https://app.copymind.com/api/support/progress/mcp';

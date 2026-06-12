@@ -57,8 +57,8 @@ const APP_WORKTREE =
   process.env.DEVOPS_APP_WORKTREE || path.join(HOME, 'repositories', 'copymind-app.git', 'main');
 
 // Narrow, post-only support surface — lets devops narrate progress to a support
-// issue's Slack thread without the full support MCP (which could read every
-// ticket / mutate status). OneCLI injects SUPPORT_PROGRESS_API_KEY by host.
+// issue's Slack thread without the full support MCP as a tool surface. OneCLI
+// injects SUPPORT_AGENT_API_KEY (reused) by host pattern.
 const PROGRESS_MCP_NAME = 'copymind-progress';
 const PROGRESS_MCP_URL =
   process.env.COPYMIND_PROGRESS_MCP_URL || 'https://app.copymind.com/api/support/progress/mcp';
